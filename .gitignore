@@ -1,5 +1,6 @@
 planner_result/
 rl_training/
 runs_rl/
-**/__pycache__/
+__pycache__/
+*.zip
 runs_stable_rl_tt/
