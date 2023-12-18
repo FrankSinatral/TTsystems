@@ -21,8 +21,8 @@ def main():
     config = {
             "evaluate_mode": args.evaluate_mode,
         }
-    env = tt_envs.TractorTrailerParkingEnv(config)
-    env = gym.make("tt-base", config=config)
+    # env = tt_envs.TractorTrailerParkingEnv(config)
+    env = gym.make("tt-reaching-v0", config=config)
     obs, _ = env.reset(seed=20)
     env.action_space.seed(seed=20)
     terminated, truncated = False, False

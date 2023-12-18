@@ -48,11 +48,13 @@ class TractorTrailerParkingEnv(Env):
             "evaluate_mode": False, # whether evaluate
             "allow_backward": True, # whether allow backward
             "sucess_goal_reward_parking": -0.12,
+            "sucess_goal_reward_sparse": 1,
             "sucess_goal_reward_others": 100, # success reward
             # "continuous_step": False,
             "simulation_freq": 10,#[hz]
             # "using_stable_baseline": False, # whether using stable baseline
             "diff_distance_threshold": 0.1, 
+            "sparse_reward_threshold": 0.5,
             "potential_reward_threshold": 0.5,
             "controlled_vehicle_config": {
                 "w": 2.0, #[m] width of vehicle
@@ -459,6 +461,10 @@ class TractorTrailerParkingEnv(Env):
         # check if success
         if self.reward_type == "parking_reward":
             if reward >= self.config['sucess_goal_reward_parking']:
+                self.terminated = True
+                info_dict['is_success'] = True
+        elif self.reward_type == "sparse_reward":
+            if reward >= self.config['sucess_goal_reward_sparse']:
                 self.terminated = True
                 info_dict['is_success'] = True
         else:

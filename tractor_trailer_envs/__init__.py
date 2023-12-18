@@ -29,6 +29,6 @@ def register_tt_envs():
         entry_point='tractor_trailer_envs.envs:TractorTrailerParkingEnvVersion1'
     )
     register(
-        id="tt-base",
-        entry_point='tractor_trailer_envs.envs:TractorTrailerBaseEnv'
+        id="tt-reaching-v0",
+        entry_point='tractor_trailer_envs.envs:TractorTrailerReachingEnv'
     )

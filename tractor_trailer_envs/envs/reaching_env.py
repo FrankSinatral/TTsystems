@@ -32,7 +32,7 @@ import tractor_trailer_envs.map_and_obstacles as map_and_obs
 
         
 
-class TractorTrailerBaseEnv(Env):
+class TractorTrailerReachingEnv(Env):
 
     @classmethod
     def default_config(cls) -> dict:
@@ -44,11 +44,12 @@ class TractorTrailerBaseEnv(Env):
             "distancematrix": [1.00, 1.00, 1.00, 1.00, 1.00, 1.00], # shape not change but can tune
             "reward_weights": [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
             "max_episode_steps": 300,
-            "goal": (0, 0, 0, 0, 0, 0), # give with None (6 tuples)
+            # "goal": (0, 0, 0, 0, 0, 0), # give with None (6 tuples)
             "evaluate_mode": False, # whether evaluate
             "allow_backward": True, # whether allow backward
             "sucess_goal_reward_parking": -0.12,
-            "sucess_goal_reward_others": 1, # success reward
+            "sucess_goal_reward_sparse": 1,
+            "sucess_goal_reward_others": 100, # success reward
             # "continuous_step": False,
             "simulation_freq": 10,#[hz]
             # "using_stable_baseline": False, # whether using stable baseline
@@ -78,10 +79,10 @@ class TractorTrailerBaseEnv(Env):
                 "xi_max": (np.pi) / 4, # jack-knife constraint  
             },
             "outer_wall_bound": {
-                "x_min": -50, #[m]
-                "x_max": 50,
-                "y_min": -50,
-                "y_max": 50,
+                "x_min": -100, #[m]
+                "x_max": 100,
+                "y_min": -100,
+                "y_max": 100,
             },
             "start_region_bound": {
                 "x_min": 0, #[m]
@@ -90,10 +91,10 @@ class TractorTrailerBaseEnv(Env):
                 "y_max": 0,
             },
             "goal_region_bound": {
-                "x_min": -10, #[m]
-                "x_max": 10,
-                "y_min": -10,
-                "y_max": 10,
+                "x_min": -50, #[m]
+                "x_max": 50,
+                "y_min": -50,
+                "y_max": 50,
             }
         }
         
@@ -190,8 +191,8 @@ class TractorTrailerBaseEnv(Env):
         
         # Optional Parameters
         self.distancematrix = np.diag(self.config["distancematrix"])
-        self.goal = self.config["goal"] # 6-tuples (can't use it to calculate reward)
-        self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
+        # self.goal = self.config["goal"] # 6-tuples (can't use it to calculate reward)
+        # self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
         
         self.dt = 1 / self.config["simulation_freq"]
         self.act_limit = self.config["act_limit"]
@@ -209,13 +210,17 @@ class TractorTrailerBaseEnv(Env):
         # random sample a goal
         x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
         y_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
-        self.goal = [x_coordinates, y_coordinates]
-        for _ in range(4):
-            yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
-            if yaw_state == self.yawmax:
-                yaw_state = -self.yawmax
-            self.goal.append(yaw_state)
+        yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
+        self.controlled_vehicle.reset_equilibrium(x_coordinates, y_coordinates,yaw_state)
+        self.goal = tuple(self.controlled_vehicle.observe())
+        # self.goal = [x_coordinates, y_coordinates]
         self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
+        # for _ in range(4):
+        #     yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
+        #     if yaw_state == self.yawmax:
+        #         yaw_state = -self.yawmax
+        #     self.goal.append(yaw_state)
+        
         # shape the self.state to desired dim
         self.controlled_vehicle.reset_equilibrium(0, 0, 0)
         ox, oy = self.map.sample_surface(0.1)
@@ -241,7 +246,8 @@ class TractorTrailerBaseEnv(Env):
             "crashed": False,
             "is_success": False,
             "jack_knife": False,
-            "action": None
+            "action": None,
+            "old_state": None,
         }
             
         
@@ -407,7 +413,7 @@ class TractorTrailerBaseEnv(Env):
         if new_weighted_distance < self.config["sparse_reward_threshold"]:
             reward = 1
         else:
-            reward = -1
+            reward = 0
             
         return reward
     
@@ -425,17 +431,17 @@ class TractorTrailerBaseEnv(Env):
     
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: dict, p: float = 0.5) -> float:
         """
-        Proximity to the goal is rewarded
-
-        We use a weighted p-norm
-
-        :param achieved_goal: the goal that was achieved
-        :param desired_goal: the goal that was desired
-        :param dict info: any supplementary information
-        :param p: the Lp^p norm used in the reward. Use p<1 to have high kurtosis for rewards in [0, 1]
-        :return: the corresponding reward
+        Recalculate reward for HER replay buffer
         """
-        return -np.power(np.dot(np.abs(achieved_goal - desired_goal), np.array(self.config["reward_weights"], dtype=np.float64)), p)
+        if self.reward_type == "diff_distance":
+            reward = self.diff_distance_reward(info["old_state"], achieved_goal, desired_goal)
+        elif self.reward_type == "parking_reward":
+            reward = self.parking_reward(info["old_state"], achieved_goal, desired_goal)
+        elif self.reward_type == "potential_reward":
+            reward = self.potential_reward(info["old_state"], achieved_goal, desired_goal)
+        elif self.reward_type == "sparse_reward":
+            reward = self.sparse_reward(info["old_state"], achieved_goal, desired_goal)
+        return reward
     
     
     # implement tt system here
@@ -459,12 +465,17 @@ class TractorTrailerBaseEnv(Env):
             "crashed": False,
             "is_success": False,
             "jack_knife": False,
-            "action": action_clipped
+            "action": action_clipped,
+            "old_state": old_state,
         }
         
         # check if success
         if self.reward_type == "parking_reward":
             if reward >= self.config['sucess_goal_reward_parking']:
+                self.terminated = True
+                info_dict['is_success'] = True
+        elif self.reward_type == "sparse_reward":
+            if reward >= self.config['sucess_goal_reward_sparse']:
                 self.terminated = True
                 info_dict['is_success'] = True
         else:
@@ -572,7 +583,7 @@ class TractorTrailerBaseEnv(Env):
             # if dash_area.any():
             #     ax.add_patch(rect)
             plt.plot(ox, oy, "sk", markersize=1)
-            plt.plot(ox_, oy_, "sk", markersize=1)
+            plt.plot(ox_, oy_, "sk", markersize=0.5)
             self.controlled_vehicle.reset(sx, sy, syaw0, syawt1, syawt2, syawt3)
             
             self.controlled_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
