@@ -19,29 +19,7 @@ def main():
     parser = get_config()
     args = parser.parse_args()
     config = {
-            "vehicle_type": args.vehicle_type,
-            "reward_type": args.reward_type,
-            # "distancematrix": args.distance_weights,
-            # "reward_weights": args.reward_weights,
-            "max_episode_steps": args.max_episode_steps,
-            # "goal": tuple(args.goal),
             "evaluate_mode": args.evaluate_mode,
-            "allow_backward": args.allow_backward,
-            "sucess_goal_reward_parking": args.sucess_goal_reward_parking,
-            "sucess_goal_reward_others": args.sucess_goal_reward_others,
-            "verbose": args.verbose,
-            "outer_wall_bound": {
-                "x_min": -50, #[m]
-                "x_max": 50,
-                "y_min": -50,
-                "y_max": 50,
-            },
-            "start_region_bound": {
-                "x_min": -10, #[m]
-                "x_max": 10,
-                "y_min": -10,
-                "y_max": 10,
-            }
         }
     env = tt_envs.TractorTrailerParkingEnv(config)
     env = gym.make("tt-parking-v1", config=config)

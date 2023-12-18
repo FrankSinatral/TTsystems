@@ -18,8 +18,11 @@ def main():
     
     parser = get_config()
     args = parser.parse_args()
-    env = tt_envs.TractorTrailerParkingEnv()
-    env = gym.make("tt-base")
+    config = {
+            "evaluate_mode": args.evaluate_mode,
+        }
+    env = tt_envs.TractorTrailerParkingEnv(config)
+    env = gym.make("tt-base", config=config)
     obs, _ = env.reset(seed=20)
     env.action_space.seed(seed=20)
     terminated, truncated = False, False

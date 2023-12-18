@@ -172,6 +172,7 @@ class TractorTrailerBaseEnv(Env):
 
         self.map = self.define_map(self.config["outer_wall_bound"])
         self.start_region = self.define_map(self.config["start_region_bound"])
+        self.goal_region = self.define_map(self.config["goal_region_bound"])
         self.vehicle_type = self.config["vehicle_type"]
         # give all the parameters through C_three_trailer
         if self.vehicle_type == "single_tractor":
@@ -216,7 +217,7 @@ class TractorTrailerBaseEnv(Env):
             self.goal.append(yaw_state)
         self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
         # shape the self.state to desired dim
-        self.controlled_vehicle.reset_equilibrium(np.array([0]), np.array([0]), np.array([0]))
+        self.controlled_vehicle.reset_equilibrium(0, 0, 0)
         ox, oy = self.map.sample_surface(0.1)
         if self.controlled_vehicle.is_collision(ox, oy):
             # best not meet this case
@@ -510,7 +511,7 @@ class TractorTrailerBaseEnv(Env):
         ax = plt.gca()
         ox, oy = self.map.sample_surface(0.1)
         ox, oy = map_and_obs.remove_duplicates(ox, oy)
-        ox_, oy_ = self.start_region.sample_surface(1)
+        ox_, oy_ = self.goal_region.sample_surface(1)
         ox_, oy_ = map_and_obs.remove_duplicates(ox_, oy_)
         plt.plot(ox, oy, 'sk', markersize=1)
         plt.plot(ox_, oy_, 'sk', markersize=0.5)
@@ -523,7 +524,7 @@ class TractorTrailerBaseEnv(Env):
         from matplotlib.animation import FuncAnimation, PillowWriter
         ox, oy = self.map.sample_surface(0.1)
         ox, oy = map_and_obs.remove_duplicates(ox, oy)
-        ox_, oy_ = self.start_region.sample_surface(1)
+        ox_, oy_ = self.goal_region.sample_surface(1)
         ox_, oy_ = map_and_obs.remove_duplicates(ox_, oy_)
         start_state = self.state_list[0]
         gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
