@@ -226,7 +226,8 @@ class TractorTrailerParkingEnv(Env):
             "crashed": False,
             "is_success": False,
             "jack_knife": False,
-            "action": None
+            "action": None,
+            "old_state": None,
         }
             
         
@@ -247,6 +248,22 @@ class TractorTrailerParkingEnv(Env):
             reward = -1
         else:
             reward = 1
+            
+        return reward
+    
+    def sparse_reward(self, state, state_, goal=None):
+        if goal is None:
+            goal = np.array([self.goal], dtype=np.float64)
+        # broadcast
+        state_diff = state - goal
+        new_state_diff = state_ - goal
+        weighted_distance = np.dot(np.dot(state_diff, self.distancematrix), state_diff.T).item()
+        new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
+        
+        if new_weighted_distance < self.config["diff_distance_threshold"]:
+            reward = 1
+        else:
+            reward = 0
             
         return reward
     
@@ -389,22 +406,25 @@ class TractorTrailerParkingEnv(Env):
             reward = self.parking_reward(np.squeeze(old_state), np.squeeze(state), goal)
         elif self.reward_type == "potential_reward":
             reward = self.potential_reward(old_state, state, goal)
+        elif self.reward_type == "sparse_reward":
+            reward = self.sparse_reward(old_state, state, goal)
         return reward
     
     
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray, info: dict, p: float = 0.5) -> float:
         """
-        Proximity to the goal is rewarded
-
-        We use a weighted p-norm
-
-        :param achieved_goal: the goal that was achieved
-        :param desired_goal: the goal that was desired
-        :param dict info: any supplementary information
-        :param p: the Lp^p norm used in the reward. Use p<1 to have high kurtosis for rewards in [0, 1]
-        :return: the corresponding reward
+        Recalculate reward for HER replay buffer
         """
-        return -np.power(np.dot(np.abs(achieved_goal - desired_goal), np.array(self.config["reward_weights"], dtype=np.float64)), p)
+        if self.reward_type == "diff_distance":
+            reward = self.diff_distance_reward(info["old_state"], achieved_goal, desired_goal)
+        elif self.reward_type == "parking_reward":
+            reward = self.parking_reward(info["old_state"], achieved_goal, desired_goal)
+        elif self.reward_type == "potential_reward":
+            reward = self.potential_reward(info["old_state"], achieved_goal, desired_goal)
+        elif self.reward_type == "sparse_reward":
+            reward = self.sparse_reward(info["old_state"], achieved_goal, desired_goal)
+        return reward
+        # return -np.power(np.dot(np.abs(achieved_goal - desired_goal), np.array(self.config["reward_weights"], dtype=np.float64)), p)
     
     
     # implement tt system here
