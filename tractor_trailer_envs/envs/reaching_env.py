@@ -207,12 +207,18 @@ class TractorTrailerReachingEnv(Env):
         # 6-dim
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
-        # random sample a goal
-        x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
-        y_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
-        yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
-        self.controlled_vehicle.reset_equilibrium(x_coordinates, y_coordinates,yaw_state)
-        self.goal = tuple(self.controlled_vehicle.observe())
+            np.random.seed(kwargs['seed'])
+        if 'goals' in kwargs:
+            number_goals = len(kwargs['goals'])
+            selected_index = np.random.randint(0, number_goals - 1)
+            self.goal = kwargs['goals'][selected_index]
+        else:
+            # random sample a goal
+            x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
+            y_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
+            yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
+            self.controlled_vehicle.reset_equilibrium(x_coordinates, y_coordinates,yaw_state)
+            self.goal = tuple(self.controlled_vehicle.observe())
         # self.goal = [x_coordinates, y_coordinates]
         self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
         # for _ in range(4):

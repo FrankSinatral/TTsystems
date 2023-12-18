@@ -21,9 +21,12 @@ def main():
     config = {
             "evaluate_mode": args.evaluate_mode,
         }
+    goals_list = [(4.0, 5.0, 0.0, 0.0, 0.0, 0.0),
+                  (3.0, 8.0, 0.0, 0.0, 0.0, 0.0),
+                  (2.0, 10.0, 0.0, 0.0, 0.0, 0.0)]
     # env = tt_envs.TractorTrailerParkingEnv(config)
     env = gym.make("tt-reaching-v0", config=config)
-    obs, _ = env.reset(seed=20)
+    obs, _ = env.reset(seed=20, goals=goals_list)
     env.action_space.seed(seed=20)
     terminated, truncated = False, False
     ep_ret = 0.0
