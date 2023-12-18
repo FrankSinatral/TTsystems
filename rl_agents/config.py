@@ -115,6 +115,12 @@ def get_config():
         help="success goal reward others"
     )
     parser.add_argument(
+        "--sucess_goal_reward_sparse",
+        type=float,
+        default=1,
+        help="success goal reward sparse"
+    )
+    parser.add_argument(
         "--pretrained",
         action='store_true',
         help="use pretrained model or not"

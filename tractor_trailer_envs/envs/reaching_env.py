@@ -433,15 +433,19 @@ class TractorTrailerReachingEnv(Env):
         """
         Recalculate reward for HER replay buffer
         """
-        if self.reward_type == "diff_distance":
-            reward = self.diff_distance_reward(info["old_state"], achieved_goal, desired_goal)
-        elif self.reward_type == "parking_reward":
-            reward = self.parking_reward(info["old_state"], achieved_goal, desired_goal)
-        elif self.reward_type == "potential_reward":
-            reward = self.potential_reward(info["old_state"], achieved_goal, desired_goal)
-        elif self.reward_type == "sparse_reward":
-            reward = self.sparse_reward(info["old_state"], achieved_goal, desired_goal)
-        return reward
+        rewards = []
+        for j in range(achieved_goal.shape[0]):  
+            if self.reward_type == "diff_distance":
+                reward = self.diff_distance_reward(info[j]["old_state"], achieved_goal[j], desired_goal[j])
+            elif self.reward_type == "parking_reward":
+                reward = self.parking_reward(info[j]["old_state"], achieved_goal[j], desired_goal[j])
+            elif self.reward_type == "potential_reward":
+                reward = self.potential_reward(info[j]["old_state"], achieved_goal[j], desired_goal[j])
+            elif self.reward_type == "sparse_reward":
+                reward = self.sparse_reward(info[j]["old_state"], achieved_goal[j], desired_goal[j])
+            rewards.append(reward)
+        
+        return np.array(rewards)
     
     
     # implement tt system here

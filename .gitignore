@@ -4,3 +4,4 @@ runs_rl/
 __pycache__/
 *.zip
 runs_stable_rl_tt/
+runs_stable_rl_tt_reaching/
