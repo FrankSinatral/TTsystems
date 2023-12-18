@@ -78,7 +78,7 @@ def main():
     }
     register_tt_envs()
     env = gym.make("tt-parking-v0", config=config)
-    her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future')
+    her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
     from stable_baselines3 import HerReplayBuffer
     from stable_baselines3 import SAC as SAC_stable
     # model = SAC_stable('MultiInputPolicy', env, verbose=1, 
