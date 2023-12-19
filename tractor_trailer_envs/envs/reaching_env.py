@@ -95,7 +95,8 @@ class TractorTrailerReachingEnv(Env):
                 "x_max": 50,
                 "y_min": -50,
                 "y_max": 50,
-            }
+            },
+            "goal_list": None,
         }
         
     @staticmethod
@@ -203,15 +204,19 @@ class TractorTrailerReachingEnv(Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     
+    def update_goal_list(self, goal_list):
+        self.config["goal_list"] = goal_list
+        
+    
     def reset(self, **kwargs):
         # 6-dim
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
             np.random.seed(kwargs['seed'])
-        if 'goals' in kwargs:
-            number_goals = len(kwargs['goals'])
+        if self.config["goal_list"] is not None:
+            number_goals = len(self.config["goal_list"])
             selected_index = np.random.randint(0, number_goals)
-            self.goal = kwargs['goals'][selected_index]
+            self.goal = self.config["goal_list"][selected_index]
         else:
             # random sample a goal
             x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])

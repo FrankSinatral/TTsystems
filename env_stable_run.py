@@ -98,7 +98,7 @@ def main():
             learning_starts=1000,
             gamma=0.95, batch_size=1024, tau=0.05,
             policy_kwargs=dict(net_arch=[512, 512, 512]),
-            seed=20)
+            seed=60)
     
     LEARNING_STEPS = 4e6 # @param {type: "number"}
     model.learn(int(LEARNING_STEPS), tb_log_name="sac")

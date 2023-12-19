@@ -48,7 +48,12 @@ def main():
                 #   (2.0, 10.0, 0.0, 0.0, 0.0, 0.0)]
     # env = tt_envs.TractorTrailerParkingEnv(config)
     env = gym.make("tt-reaching-v0", config=config)
-    obs, _ = env.reset(seed=20, goals=goals_list)
+    obs, _ = env.reset(seed=20)
+    goals_list = [(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+                  (3.0, 8.0, 0.0, 0.0, 0.0, 0.0),
+                  (2.0, 10.0, 0.0, 0.0, 0.0, 0.0)]
+    env.unwrapped.update_goal_list(goals_list)
+    obs, _ = env.reset(seed=20)
     env.action_space.seed(seed=20)
     terminated, truncated = False, False
     ep_ret = 0.0
