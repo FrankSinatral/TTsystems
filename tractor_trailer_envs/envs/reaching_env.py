@@ -210,7 +210,7 @@ class TractorTrailerReachingEnv(Env):
             np.random.seed(kwargs['seed'])
         if 'goals' in kwargs:
             number_goals = len(kwargs['goals'])
-            selected_index = np.random.randint(0, number_goals - 1)
+            selected_index = np.random.randint(0, number_goals)
             self.goal = kwargs['goals'][selected_index]
         else:
             # random sample a goal
@@ -409,7 +409,7 @@ class TractorTrailerReachingEnv(Env):
         reward = -np.power(np.dot(np.abs(achieved_goal_ - desired_goal), np.array(self.config["reward_weights"])), p)
         return reward
     
-    def sparse_reward(self, state_, goal=None):
+    def sparse_reward(self, state, state_, goal=None):
         if goal is None:
             goal = np.array([self.goal], dtype=np.float64)
         # broadcast
@@ -431,7 +431,7 @@ class TractorTrailerReachingEnv(Env):
         elif self.reward_type == "potential_reward":
             reward = self.potential_reward(old_state, state, goal)
         elif self.reward_type == "sparse_reward":
-            reward = self.sparse_reward(state, goal)
+            reward = self.sparse_reward(old_state, state, goal)
         return reward
     
     
