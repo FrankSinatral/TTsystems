@@ -48,7 +48,7 @@ class TractorTrailerParkingEnv(Env):
             "evaluate_mode": False, # whether evaluate
             "allow_backward": True, # whether allow backward
             "sucess_goal_reward_parking": -0.12,
-            "sucess_goal_reward_sparse": 1,
+            "sucess_goal_reward_sparse": 0,
             "sucess_goal_reward_others": 100, # success reward
             # "continuous_step": False,
             "simulation_freq": 10,#[hz]
@@ -262,10 +262,10 @@ class TractorTrailerParkingEnv(Env):
         weighted_distance = np.dot(np.dot(state_diff, self.distancematrix), state_diff.T).item()
         new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
         
-        if new_weighted_distance < self.config["diff_distance_threshold"]:
-            reward = 1
-        else:
+        if new_weighted_distance < self.config["sparse_reward_threshold"]:
             reward = 0
+        else:
+            reward = -1
             
         return reward
     
