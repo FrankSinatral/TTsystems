@@ -72,7 +72,7 @@ def main():
     from stable_baselines3 import HerReplayBuffer
     from stable_baselines3 import SAC as SAC_stable
     model = SAC_stable('MultiInputPolicy', env, verbose=1, 
-                tensorboard_log="runs_stable_rl_tt", 
+                tensorboard_log="runs_stable_rl_tt_reaching/curriculum", 
                 buffer_size=int(1e6),
                 learning_rate=1e-3,
                 learning_starts=1000,
@@ -90,7 +90,7 @@ def main():
     #         policy_kwargs=dict(net_arch=[512, 512, 512]),
     #         seed=60)
     
-    LEARNING_STEPS = 4e6 # @param {type: "number"}
+    LEARNING_STEPS = 4e3 # @param {type: "number"}
     model.learn(int(LEARNING_STEPS), tb_log_name="sac")
     model.save("stable_rl_save/")
     print(1)
