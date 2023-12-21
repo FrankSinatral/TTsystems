@@ -11,7 +11,8 @@ import tractor_trailer_envs as tt_envs
 
 import numpy as np
 import rl_agents as rl
-
+from stable_baselines3 import HerReplayBuffer
+from stable_baselines3 import SAC as SAC_stable
 def main():
     parser = rl.get_config()
     args = parser.parse_args()
@@ -67,10 +68,6 @@ def main():
     env = gym.make("tt-reaching-v0", config=config)
     goals_list = [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(-10, -1, 0.1)]
     goals_list += [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(1, 10, 0.1)]
-    env.unwrapped.update_goal_list(goals_list)
-    her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
-    from stable_baselines3 import HerReplayBuffer
-    from stable_baselines3 import SAC as SAC_stable
     model = SAC_stable('MultiInputPolicy', env, verbose=1, 
                 tensorboard_log="runs_stable_rl_tt_reaching/curriculum", 
                 buffer_size=int(1e6),
@@ -89,10 +86,13 @@ def main():
     #         gamma=0.95, batch_size=1024, tau=0.05,
     #         policy_kwargs=dict(net_arch=[512, 512, 512]),
     #         seed=60)
-    
     LEARNING_STEPS = 4e3 # @param {type: "number"}
-    model.learn(int(LEARNING_STEPS), tb_log_name="sac")
-    model.save("stable_rl_save/")
+    for _ in range(300):
+        goals_list
+        env.unwrapped.update_goal_list(goals_list)
+        her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
+        model.learn(int(LEARNING_STEPS), tb_log_name="sac")
+    
     print(1)
 
 if __name__ == "__main__":
