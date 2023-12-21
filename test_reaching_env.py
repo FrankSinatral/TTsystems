@@ -58,6 +58,7 @@ def main():
     goals_list = [(1.0, 0.0, 0.0, 0.0, 0.0, 0.0),
                   (3.0, 8.0, 0.0, 0.0, 0.0, 0.0),
                   (2.0, 10.0, 0.0, 0.0, 0.0, 0.0)]
+    env.unwrapped.sample_from_space(seed=30)
     env.unwrapped.update_goal_list(goals_list)
     obs, _ = env.reset(seed=20)
     env.action_space.seed(seed=20)

@@ -8,7 +8,7 @@ import math
 import os
 import sys
 import pprint
-
+import copy
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -171,7 +171,8 @@ class TractorTrailerReachingEnv(Env):
             pprint.pprint(config)
             print(RESET, end="")
         self.reward_type = self.config["reward_type"]
-
+        self.start = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
         self.map = self.define_map(self.config["outer_wall_bound"])
         self.start_region = self.define_map(self.config["start_region_bound"])
         self.goal_region = self.define_map(self.config["goal_region_bound"])
@@ -207,6 +208,18 @@ class TractorTrailerReachingEnv(Env):
     def update_goal_list(self, goal_list):
         self.config["goal_list"] = goal_list
         
+    def sample_from_space(self, **kwargs):
+        if 'seed' in kwargs:
+            self.seed(kwargs['seed'])
+            np.random.seed(kwargs['seed'])
+        x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
+        y_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
+        yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
+        vehicle = copy.deepcopy(self.controlled_vehicle)
+        vehicle.reset_equilibrium(x_coordinates, y_coordinates,yaw_state)
+        sample_goal = tuple(vehicle.observe())
+        return sample_goal
+    
     
     def reset(self, **kwargs):
         # 6-dim
@@ -233,7 +246,7 @@ class TractorTrailerReachingEnv(Env):
         #     self.goal.append(yaw_state)
         
         # shape the self.state to desired dim
-        self.controlled_vehicle.reset_equilibrium(0, 0, 0)
+        self.controlled_vehicle.reset_equilibrium(self.sx, self.sy, self.syaw0)
         ox, oy = self.map.sample_surface(0.1)
         if self.controlled_vehicle.is_collision(ox, oy):
             # best not meet this case
@@ -543,6 +556,46 @@ class TractorTrailerReachingEnv(Env):
         plt.plot(ox_, oy_, 'sk', markersize=0.5)
         self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue')
         plt.axis('equal')
+        
+    def plot_exploration(self, i, goals_list):
+        plt.cla()
+        ax = plt.gca()
+        ox, oy = self.map.sample_surface(0.1)
+        ox, oy = map_and_obs.remove_duplicates(ox, oy)
+        plt.plot(ox, oy, 'sk', markersize=1)
+        self.plot_vehicle = copy.deepcopy(self.controlled_vehicle)
+        real_dim = len(self.plot_vehicle.state)
+        for goal in goals_list:
+            goal = goal[:real_dim]
+            self.plot_vehicle.reset(*goal)
+            self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
+        start = np.array(self.start)[:real_dim]
+        self.plot_vehicle.reset(*start)
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        plt.axis('equal')
+        if not os.path.exists('curriculum_vis/visit/'):
+            os.makedirs('curriculum_vis/visit/')
+        plt.savefig('curriculum_vis/visit/visit_region_{}.png'.format(i))
+    
+    def plot_goal(self, i):
+        plt.cla()
+        ax = plt.gca()
+        ox, oy = self.map.sample_surface(0.1)
+        ox, oy = map_and_obs.remove_duplicates(ox, oy)
+        plt.plot(ox, oy, 'sk', markersize=1)
+        self.plot_vehicle = copy.deepcopy(self.controlled_vehicle)
+        real_dim = len(self.plot_vehicle.state)
+        for goal in self.config["goal_list"]:
+            goal = goal[:real_dim]
+            self.plot_vehicle.reset(*goal)
+            self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'red')
+        start = np.array(self.start)[:real_dim]
+        self.plot_vehicle.reset(*start)
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        plt.axis('equal')
+        if not os.path.exists('curriculum_vis/goals/'):
+            os.makedirs('curriculum_vis/goals/')
+        plt.savefig('curriculum_vis/goals/training_goals_{}.png'.format(i))        
         
     def run_simulation(self, save_dir=None):
         assert self.evaluate_mode # in case that you use the function not correctly
