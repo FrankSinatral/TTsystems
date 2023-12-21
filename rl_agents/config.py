@@ -117,7 +117,7 @@ def get_config():
     parser.add_argument(
         "--sucess_goal_reward_sparse",
         type=float,
-        default=1,
+        default=0,
         help="success goal reward sparse"
     )
     parser.add_argument(
