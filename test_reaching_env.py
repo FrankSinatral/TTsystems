@@ -42,6 +42,12 @@ def main():
                 "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
                 "xi_max": (np.pi) / 4, # jack-knife constraint  
             },
+            "goal_region_bound": {
+                "x_min": -10, #[m]
+                "x_max": 10,
+                "y_min": -10,
+                "y_max": 10,
+            },
         }
     goals_list = [(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)]
                 #   (3.0, 8.0, 0.0, 0.0, 0.0, 0.0),
