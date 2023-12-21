@@ -46,7 +46,7 @@ def get_config():
         '-r',
         type=str,
         # it seems that diff_distance is the best now
-        default="potential_reward",
+        default="sparse_reward",
         choices=["diff_distance", "parking_reward", "potential_reward", "sparse_reward"],
         help="the type of reward used")
     parser.add_argument(
