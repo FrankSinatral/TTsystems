@@ -40,7 +40,6 @@ def main():
         "allow_backward": args.allow_backward,
         "sucess_goal_reward_parking": args.sucess_goal_reward_parking,
         "sucess_goal_reward_others": args.sucess_goal_reward_others,
-        "sucess_goal_reward_parking": args.sucess_goal_reward_sparse,
         "verbose": args.verbose,
         "outer_wall_bound": {
             "x_min": -50, #[m]
