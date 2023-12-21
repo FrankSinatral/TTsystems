@@ -43,12 +43,12 @@ class TractorTrailerReachingEnv(Env):
             "act_limit": 1, 
             "distancematrix": [1.00, 1.00, 1.00, 1.00, 1.00, 1.00], # shape not change but can tune
             "reward_weights": [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
-            "max_episode_steps": 300,
+            "max_episode_steps": 600,
             # "goal": (0, 0, 0, 0, 0, 0), # give with None (6 tuples)
             "evaluate_mode": False, # whether evaluate
             "allow_backward": True, # whether allow backward
             "sucess_goal_reward_parking": -0.12,
-            "sucess_goal_reward_sparse": 1,
+            "sucess_goal_reward_sparse": 0,
             "sucess_goal_reward_others": 100, # success reward
             # "continuous_step": False,
             "simulation_freq": 10,#[hz]
@@ -422,9 +422,9 @@ class TractorTrailerReachingEnv(Env):
         new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
         
         if new_weighted_distance < self.config["sparse_reward_threshold"]:
-            reward = 1
-        else:
             reward = 0
+        else:
+            reward = -1
             
         return reward
     
