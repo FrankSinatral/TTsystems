@@ -89,7 +89,8 @@ class TractorTrailerParkingEnv(Env):
                 "x_max": 10,
                 "y_min": -10,
                 "y_max": 10,
-            }
+            },
+            "N_steps": 1,
         }
         
     @staticmethod
@@ -841,9 +842,9 @@ class TractorTrailerParkingEnvVersion1(Env):
         new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
         
         if new_weighted_distance < self.config["diff_distance_threshold"]:
-            reward = 1
+            reward = self.config['sucess_goal_reward_sparse']
         else:
-            reward = 0
+            reward = -1
             
         return reward
     
