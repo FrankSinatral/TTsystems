@@ -154,11 +154,11 @@ def main():
     #         gamma=0.95, batch_size=1024, tau=0.05,
     #         policy_kwargs=dict(net_arch=[512, 512, 512]),
     #         seed=60)
-    LEARNING_STEPS = 5e4 # @param {type: "number"}
+    LEARNING_STEPS = 5e3 # @param {type: "number"}
     
     # goals_list
     env.unwrapped.update_goal_list(goals_for_training)
-    model.learn(int(LEARNING_STEPS), tb_log_name="one_trailer_sparse", reset_num_timesteps=True)
+    model.learn(int(LEARNING_STEPS), tb_log_name="one_trailer_straight", reset_num_timesteps=True)
     
     model.save("train_straight_sparse/")
     

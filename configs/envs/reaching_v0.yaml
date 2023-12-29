@@ -29,7 +29,6 @@ goal_region_bound:
   x_max: 10
   y_min: -10
   y_max: 10
-max_episode_steps: 300
 outer_wall_bound:
   x_min: -80
   x_max: 80

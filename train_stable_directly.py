@@ -100,7 +100,7 @@ def main():
     
     # goals_list
     # env.unwrapped.update_goal_list(goals_for_training)
-    model.learn(int(LEARNING_STEPS), tb_log_name="one_trailer", reset_num_timesteps=True)
+    model.learn(int(LEARNING_STEPS), tb_log_name="one_trailer_directly", reset_num_timesteps=True)
     
     model.save("train_one_shot/")
     
