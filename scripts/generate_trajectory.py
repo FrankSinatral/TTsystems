@@ -148,7 +148,10 @@ def parallel_execution(num_processes=4, total_runs=1000):
     save_results(results, batch_size=100)
     
 if __name__ == "__main__":
+    t1 = time.time()
     parallel_execution(20)
+    t2 = time.time()
+    print("execution time:", t2 - t1)
     # test_single()
     # with open('./trajectory_buffer/result_0.pkl', 'rb') as f:
     #     data = pickle.load(f)
