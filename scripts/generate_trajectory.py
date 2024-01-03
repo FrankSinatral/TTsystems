@@ -135,6 +135,7 @@ def save_results(results, batch_size=100):
                 with open(os.path.join(save_dir, f'result_{file_index}.pkl'), 'wb') as f:
                     pickle.dump(batch, f)    
                 batch = []
+                file_index += 1
                 while f'result_{file_index}.pkl' in existing_files:
                     file_index += 1
     if batch:
