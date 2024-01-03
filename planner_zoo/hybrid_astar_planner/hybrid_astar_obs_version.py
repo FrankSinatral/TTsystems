@@ -1918,7 +1918,18 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         if self.config["plot_final_path"]:
             self.plot_real_path(rx, ry)
-            plt.savefig("./planner_result/hybrid_expand_tree_one_trailer.png")
+            save_dir = './planner_result/'
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            
+            files = os.listdir(save_dir)
+            
+            file_index = 0
+            file_name = f"hybrid_expand_tree_one_trailer_{file_index}.png"
+            while file_name in files:
+                file_index += 1
+                file_name = f"hybrid_expand_tree_one_trailer_{file_index}.png"
+            plt.savefig(os.path.join(save_dir, file_name))
             plt.close()  
          
         path = hyastar.Path_one_trailer(rx, ry, ryaw, ryawt1, direc, cost)
@@ -2176,11 +2187,11 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_new(node, ngoal)
                                 else:
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std)
-            if self.config["plot_expand_tree"]:
-                self.plot_expand_tree(start, goal, closed_set, open_set)
-                plt.close()               
-
-        print("final expand node: ", len(open_set) + len(closed_set))
+            # if self.config["plot_expand_tree"]:
+            #     self.plot_expand_tree(start, goal, closed_set, open_set)
+            #     plt.close()               
+        if verbose:
+            print("final expand node: ", len(open_set) + len(closed_set))
         
         if get_control_sequence:
             path, expand_control_list = self.extract_path_and_control(closed_set, fnode, nstart,find_rs_path=find_rs_path)

@@ -78,31 +78,31 @@ def main():
     register_tt_envs()
     env = gym.make("tt-reaching-v0", config=config)
     # goals_for_training = [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(-10, -1, 0.1)] + [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(1, 10, 0.1)]
-    model = SAC_stable('MultiInputPolicy', env, verbose=1, 
-                tensorboard_log="runs_stable_rl_tt_reaching/", 
-                buffer_size=int(1e6),
-                learning_rate=1e-3,
-                learning_starts=1000,
-                gamma=0.95, batch_size=1024, tau=0.05,
-                policy_kwargs=dict(net_arch=[512, 512, 512]),
-                seed=20)
-    
-    # model = SAC_stable('MultiInputPolicy', env, replay_buffer_class=HerReplayBuffer,
-    #         replay_buffer_kwargs=her_kwargs, verbose=1, 
-    #         tensorboard_log="runs_stable_rl_tt", 
-    #         buffer_size=int(1e6),
-    #         learning_rate=1e-3,
-    #         learning_starts=1000,
-    #         gamma=0.95, batch_size=1024, tau=0.05,
-    #         policy_kwargs=dict(net_arch=[512, 512, 512]),
-    #         seed=60)
-    LEARNING_STEPS = 5e6 # @param {type: "number"}
+    # model = SAC_stable('MultiInputPolicy', env, verbose=1, 
+    #             tensorboard_log="runs_stable_rl_tt_reaching/", 
+    #             buffer_size=int(1e6),
+    #             learning_rate=1e-3,
+    #             learning_starts=1000,
+    #             gamma=0.95, batch_size=1024, tau=0.05,
+    #             policy_kwargs=dict(net_arch=[512, 512, 512]),
+    #             seed=40)
+    her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
+    model = SAC_stable('MultiInputPolicy', env, replay_buffer_class=HerReplayBuffer,
+            replay_buffer_kwargs=her_kwargs, verbose=1, 
+            tensorboard_log="runs_stable_rl_tt", 
+            buffer_size=int(1e6),
+            learning_rate=1e-3,
+            learning_starts=1000,
+            gamma=0.95, batch_size=1024, tau=0.05,
+            policy_kwargs=dict(net_arch=[512, 512, 512]),
+            seed=40)
+    LEARNING_STEPS = 2e7 # @param {type: "number"}
     
     # goals_list
     # env.unwrapped.update_goal_list(goals_for_training)
-    model.learn(int(LEARNING_STEPS), tb_log_name="one_trailer_directly", reset_num_timesteps=True)
+    model.learn(int(LEARNING_STEPS), tb_log_name="one_trailer_directly_her", reset_num_timesteps=True)
     
-    model.save("train_one_shot/")
+    model.save("train_one_shot_her/")
     
     print(1)
 
