@@ -2330,13 +2330,13 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         plt.plot(self.ox, self.oy, 'sk', markersize=1)
         # plt.legend()
         plt.axis("equal")
-        if not os.path.exists("planner_result/failed_trajectory_three_trailer"):
-            os.makedirs("planner_result/failed_trajectory_three_trailer")
+        if not os.path.exists("planner_result/failed_trajectory_one_trailer"):
+            os.makedirs("planner_result/failed_trajectory_one_trailer")
             
-        base_path = "./planner_result/failed_trajectory_three_trailer"
+        base_path = "./planner_result/failed_trajectory_one_trailer"
         extension = ".png"
             
-        all_files = os.listdir("./planner_result/failed_trajectory")
+        all_files = os.listdir("./planner_result/failed_trajectory_one_trailer")
         matched_files = [re.match(r'explored(\d+)\.png', f) for f in all_files]
         numbers = [int(match.group(1)) for match in matched_files if match]
         
@@ -2344,7 +2344,7 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             save_index = max(numbers) + 1
         else:
             save_index = 0
-        plt.savefig(base_path + "explored" + str(save_index) + extension)
+        plt.savefig(base_path + "/explored" + str(save_index) + extension)
         plt.close()
         # plt.savefig("HybridAstarPlanner/trajectory/explored.png")
 
@@ -3762,7 +3762,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         base_path = "./planner_result/failed_trajectory_three_trailer"
         extension = ".png"
             
-        all_files = os.listdir("./planner_result/failed_trajectory")
+        all_files = os.listdir("./planner_result/failed_trajectory_three_trailer")
         matched_files = [re.match(r'explored(\d+)\.png', f) for f in all_files]
         numbers = [int(match.group(1)) for match in matched_files if match]
         
@@ -3770,7 +3770,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             save_index = max(numbers) + 1
         else:
             save_index = 0
-        plt.savefig(base_path + "explored" + str(save_index) + extension)
+        plt.savefig(base_path + "/explored" + str(save_index) + extension)
         plt.close()
         # plt.savefig("HybridAstarPlanner/trajectory/explored.png")
 
