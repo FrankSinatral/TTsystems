@@ -83,14 +83,16 @@ def generate_using_hybrid_astar_one_trailer(goal):
     oy = oy_map
     ox, oy = tt_envs.remove_duplicates(ox, oy)
     config = {
-       "plot_final_path": False,
-       "plot_rs_path": False,
-       "plot_expand_tree": False 
+       "plot_final_path": True,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 10,
+       "range_steer_set": 20,
     }
     one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:
         # t1 = time.time()
-        path, control_list, rs_path = one_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=False)
+        path, control_list, rs_path = one_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
         # t2 = time.time()
         # print("planning time:", t2 - t1)
         control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
@@ -112,7 +114,7 @@ def main_process(index):
     return index, goal, transition_list
 
 def test_single():
-    goal = random_generate_goal_one_trailer()
+    goal = np.array([5,6,0.0,0.0])
     transition_list = generate_using_hybrid_astar_one_trailer(goal)
     print(1)
 
@@ -148,11 +150,11 @@ def parallel_execution(num_processes=4, total_runs=1000):
     save_results(results, batch_size=100)
     
 if __name__ == "__main__":
-    t1 = time.time()
-    parallel_execution(20)
-    t2 = time.time()
-    print("execution time:", t2 - t1)
-    # test_single()
+    # t1 = time.time()
+    # parallel_execution(20)
+    # t2 = time.time()
+    # print("execution time:", t2 - t1)
+    test_single()
     # with open('./trajectory_buffer/result_0.pkl', 'rb') as f:
     #     data = pickle.load(f)
     # print(1)
