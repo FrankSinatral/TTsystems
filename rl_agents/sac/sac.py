@@ -84,6 +84,10 @@ class SAC:
                  whether_her=True,
                  use_automatic_entropy_tuning=False,
                  log_alpha_lr=1e-3,
+                 env_name='reaching-v0',
+                 pretrained=False,
+                 pretrained_itr=None,
+                 pretrained_fpath=None,
                  config: dict = None,
                  args = None):    
         """
@@ -187,7 +191,7 @@ class SAC:
         self.seed = seed
         torch.manual_seed(seed)
         np.random.seed(seed)
-        self.env_name = args.env_name
+        self.env_name = env_name
         # Instantiate environment
         if self.env_name == "standard_parking":
             self.env, self.test_env = env_fn(), env_fn() # using gym to instantiate env
@@ -224,9 +228,9 @@ class SAC:
             self.test_env.action_space.seed(seed)
             # Create actor-critic module and target networks
             # TODO
-            if args.pretrained == True:
-                fpath = args.pretrained_fpath
-                itr = args.pretrained_itr if args.pretrained_itr >= 0 else 'last'
+            if pretrained == True:
+                fpath = pretrained_fpath
+                itr = pretrained_itr if pretrained_itr >= 0 else 'last'
                 self.ac = self.load_pretrained_model(fpath, itr)
                 self.ac_targ = deepcopy(self.ac)
             else:

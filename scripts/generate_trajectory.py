@@ -26,6 +26,7 @@ def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer)
     return new_control_list
 
 def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
+    # Pack every 10 steps to add to buffer
     config_dict = {
         "w": 2.0, #[m] width of vehicle
         "wb": 3.5, #[m] wheel base: rear to front steer
@@ -68,14 +69,26 @@ def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
     else:
         print("Reject")
         return None
-
-
-
-def generate_using_hybrid_astar_one_trailer(goal):
-   
-    input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     
-    map_env = [(-80, -80), (80, -80), (-80, 80), (80, 80)]
+def pack_transition(transition_list):
+    # for rl training
+    pack_transition_list = []
+    i = 0
+    while i < len(transition_list):
+        state, action, _ = transition_list[i]
+        next_state_index = min(i + 9, len(transition_list) - 1)
+        _, _, next_state = transition_list[next_state_index]
+        pack_transition_list.append([state, action, next_state])
+        i += 10
+    return pack_transition_list
+
+
+
+def generate_using_hybrid_astar_one_trailer(input, goal):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
     Map = tt_envs.MapBound(map_env)
     
     ox_map, oy_map = Map.sample_surface(0.1)
@@ -91,15 +104,59 @@ def generate_using_hybrid_astar_one_trailer(goal):
     }
     one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:
-        # t1 = time.time()
+        t1 = time.time()
         path, control_list, rs_path = one_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
-        # t2 = time.time()
-        # print("planning time:", t2 - t1)
-        control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
-        transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
-        return transition_list
+        t2 = time.time()
+        print("planning time:", t2 - t1)
     except: 
         return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
+def generate_using_hybrid_astar_one_trailer_modify(input, goal, x_scale=3, y_scale=3):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    input_x, input_y = input[0], input[1]
+    goal_x, goal_y = goal[0], goal[1]
+    map_x_width = x_scale * np.abs(input_x - goal_x)
+    map_y_width = y_scale * np.abs(input_y - goal_y)
+    max_width = int(max(map_x_width, map_y_width))
+    if (max_width + 1) % 2 == 0:
+        mp_step = max_width + 1
+    else:
+        mp_step = max_width + 2
+    
+    
+    map_env = [(input_x - map_x_width, input_y - map_y_width), (input_x - map_x_width, input_y + map_y_width), \
+               (input_x + map_x_width, input_y - map_y_width), (input_x + map_x_width, input_y + map_y_width)]
+    Map = tt_envs.MapBound(map_env)
+    
+    ox_map, oy_map = Map.sample_surface(0.1)
+    ox = ox_map
+    oy = oy_map
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    config = {
+       "plot_final_path": False,
+       "plot_rs_path": False,
+       "plot_expand_tree": False,
+       "mp_step": mp_step,
+       "range_steer_set": 20,
+    }
+    one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    try:
+        t1 = time.time()
+        path, control_list, rs_path = one_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
+        t2 = time.time()
+        print("planning time:", t2 - t1)
+    except: 
+        return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
+
+    
     
 
 def random_generate_goal_one_trailer():
@@ -110,13 +167,23 @@ def random_generate_goal_one_trailer():
 
 def main_process(index):
     goal = random_generate_goal_one_trailer()
-    transition_list = generate_using_hybrid_astar_one_trailer(goal)
-    return index, goal, transition_list
+    input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    transition_list = generate_using_hybrid_astar_one_trailer(input, goal)
+    pack_transition_list = pack_transition(transition_list)
+    return index, goal, pack_transition_list
+
+def query_hybrid_astar_one_trailer(input, goal):
+    transition_list = generate_using_hybrid_astar_one_trailer(input, goal)
+    pack_transition_list = pack_transition(transition_list)
+    return goal, pack_transition_list
+
 
 def test_single():
-    goal = np.array([5,6,0.0,0.0])
-    transition_list = generate_using_hybrid_astar_one_trailer(goal)
-    print(1)
+    input = np.array([4, 5.5, np.deg2rad(15.0), np.deg2rad(30.0)])
+    goal = np.array([-3,-1,np.deg2rad(-170.0),np.deg2rad(-150.0)])
+    transition_list = generate_using_hybrid_astar_one_trailer_modify(input, goal)
+    # transition_list = generate_using_hybrid_astar_one_trailer(goal)
+    return transition_list
 
 def save_results(results, batch_size=100):
     save_dir = './trajectory_buffer'
@@ -144,7 +211,7 @@ def save_results(results, batch_size=100):
         with open(os.path.join(save_dir, f'result_{file_index}.pkl'), 'wb') as f:
             pickle.dump(batch, f)        
 
-def parallel_execution(num_processes=4, total_runs=1000):
+def parallel_execution(num_processes=4, total_runs=100):
     with Pool(num_processes) as pool:
         results = pool.map(main_process, range(total_runs))
     save_results(results, batch_size=100)
@@ -154,7 +221,9 @@ if __name__ == "__main__":
     # parallel_execution(20)
     # t2 = time.time()
     # print("execution time:", t2 - t1)
-    test_single()
+    transition_list = test_single()
+    pack_transition_list = pack_transition(transition_list)
+    print(1)
     # with open('./trajectory_buffer/result_0.pkl', 'rb') as f:
     #     data = pickle.load(f)
     # print(1)
