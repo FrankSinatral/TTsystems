@@ -49,4 +49,4 @@ sparse_reward_threshold: 0.5
 vehicle_type: one_trailer
 verbose: false
 N_steps: 10
-jack_knife_penalty: -20
+jack_knife_penalty: -100

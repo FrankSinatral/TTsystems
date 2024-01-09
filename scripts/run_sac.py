@@ -8,6 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__),'../'))
 import rl_agents as agents
 import tractor_trailer_envs as tt_envs
 from tractor_trailer_envs import register_tt_envs
+from datetime import datetime
 
 # from rl_training.config import get_config
 
@@ -16,24 +17,27 @@ def tt_env_fn(config: dict = None, args = None):
 
     
 def gym_env_fn():
-    import gymnasium as gym
-    from highway_env import register_highway_envs
-    register_highway_envs()
     return gym.make("parking-v0", render_mode="rgb_array")
 
-def reaching_tt_env_fn(config: dict):
-    register_tt_envs()
+def reaching_tt_env_fn(config: dict): 
     return gym.make("tt-reaching-v0", config=config)
+
+def get_current_time_format():
+    # get current time
+    current_time = datetime.now()
+    # demo: 20230130_153042
+    formatted_time = current_time.strftime("%Y%m%d_%H%M%S")
+    return formatted_time
 
 def main():
     # parser = get_config()
     # args = parser.parse_args()
-    with open("configs/agents/sac.yaml", 'r') as file:
+    with open("configs/agents/sac_astar.yaml", 'r') as file:
         config_algo = yaml.safe_load(file)
     
     env_name = config_algo['env_name']
     seed = config_algo['seed']
-    exp_name = env_name + '_' + config_algo['algo_name'] + '_' + str(seed) 
+    exp_name = env_name + '_' + config_algo['algo_name'] + '_' + str(seed) + '_' + get_current_time_format()
     logger_kwargs = {
         'output_dir': config_algo['logging_dir'] + exp_name,
         'output_fname': config_algo['output_fname'],
@@ -72,7 +76,8 @@ def main():
     with open("configs/envs/reaching_v0.yaml", 'r') as file:
         config = yaml.safe_load(file)
     
-    agent = agents.SAC(env_fn=reaching_tt_env_fn,
+    agent = agents.SAC_ASTAR(env_fn=reaching_tt_env_fn,
+                algo=config_algo['algo_name'],
                 ac_kwargs=ac_kwargs,
                 seed=seed,
                 steps_per_epoch=config_algo['sac_steps_per_epoch'],
@@ -94,6 +99,9 @@ def main():
                 whether_her=config_algo['whether_her'],
                 use_automatic_entropy_tuning=config_algo['use_auto'],
                 env_name=config_algo['env_name'],
+                pretrained=config_algo['pretrained'],
+                pretrained_itr=config_algo['pretrained_itr'],
+                pretrained_dir=config_algo['pretrained_dir'],
                 config=config)
     agent.run()
         

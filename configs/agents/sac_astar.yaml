@@ -1,18 +1,18 @@
-algo_name: 'sac'
+algo_name: 'sac_astar'
 seed: 10
 env_name: 'reaching-v0'
-sac_steps_per_epoch: 4
-sac_epochs: 12500
+sac_steps_per_epoch: 50
+sac_epochs: 1000000
 replay_size: 1000000
 gamma: 0.99
 polyak: 0.95
 lr: 0.001
 alpha: 0.2
 batch_size: 1024
-start_steps: 100
-update_after: 100
-update_every: 1
-save_freq: 10
+start_steps: 1000
+update_after: 1000
+update_every: 2000
+save_freq: 100000
 num_test_episodes: 10
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
@@ -23,5 +23,5 @@ whether_her: False
 use_auto: True
 
 pretrained: False
-pretrained_itr: None
-pretrained_fpath: None
+pretrained_itr: 3
+pretrained_dir: 'runs_rl/reaching-v0_sac_astar_10_20240107_143228/'

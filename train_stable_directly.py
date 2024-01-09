@@ -83,7 +83,7 @@ def main():
                 buffer_size=int(1e6),
                 learning_rate=1e-3,
                 learning_starts=1000,
-                gamma=0.95, batch_size=1024, tau=0.05,
+                gamma=0.99, batch_size=1024, tau=0.05,
                 policy_kwargs=dict(net_arch=[512, 512, 512]),
                 seed=20)
     # her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
