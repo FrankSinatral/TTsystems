@@ -19,7 +19,7 @@ def tt_env_fn(config: dict = None, args = None):
 def gym_env_fn():
     return gym.make("parking-v0", render_mode="rgb_array")
 
-def reaching_tt_env_fn(config: dict): 
+def gym_reaching_tt_env_fn(config: dict): 
     return gym.make("tt-reaching-v0", config=config)
 
 def get_current_time_format():
@@ -76,7 +76,7 @@ def main():
     with open("configs/envs/reaching_v0.yaml", 'r') as file:
         config = yaml.safe_load(file)
     
-    agent = agents.SAC_ASTAR(env_fn=reaching_tt_env_fn,
+    agent = agents.SAC_ASTAR(env_fn=gym_reaching_tt_env_fn,
                 algo=config_algo['algo_name'],
                 ac_kwargs=ac_kwargs,
                 seed=seed,
@@ -102,6 +102,7 @@ def main():
                 pretrained=config_algo['pretrained'],
                 pretrained_itr=config_algo['pretrained_itr'],
                 pretrained_dir=config_algo['pretrained_dir'],
+                whether_astar=config_algo['whether_astar'],
                 config=config)
     agent.run()
         

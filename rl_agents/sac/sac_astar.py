@@ -483,6 +483,7 @@ class SAC_ASTAR:
         goal = o["desired_goal"]
         input = o["observation"]
         pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
+        print("Astar Episode Length:", len(pack_transition_list))
         for transition in pack_transition_list:
             o, a, o2, r, d = transition
             self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
@@ -559,9 +560,12 @@ class SAC_ASTAR:
 
             # Update handling
             if t >= self.update_after and t % self.update_every == 0:
+                update_start_time = time.time()
                 for j in range(self.update_every):
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     self.update(data=batch, global_step=t)
+                update_end_time = time.time()
+                print("Update time:", update_end_time - update_start_time)
             # This is evaluate step and save model step
             # End of epoch handling
             if (t+1) % self.steps_per_epoch == 0:

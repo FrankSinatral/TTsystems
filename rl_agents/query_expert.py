@@ -129,7 +129,7 @@ def generate_using_hybrid_astar_one_trailer(input, goal):
     transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
     return transition_list
 
-def generate_using_hybrid_astar_one_trailer_modify(input, goal, x_scale=3, y_scale=3):
+def generate_using_hybrid_astar_one_trailer_version1(input, goal, x_scale=3, y_scale=3):
     input = input[:4]
     goal = goal[:4]
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
@@ -138,6 +138,7 @@ def generate_using_hybrid_astar_one_trailer_modify(input, goal, x_scale=3, y_sca
     map_x_width = x_scale * np.abs(input_x - goal_x)
     map_y_width = y_scale * np.abs(input_y - goal_y)
     max_width = int(max(map_x_width, map_y_width))
+    # Fank: mp_step only have to be a even number
     if (max_width + 1) % 2 == 0:
         mp_step = max_width + 1
     else:
@@ -171,6 +172,36 @@ def generate_using_hybrid_astar_one_trailer_modify(input, goal, x_scale=3, y_sca
     transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
     return transition_list
 
+def generate_using_hybrid_astar_one_trailer_version2(input, goal):
+    input = input[:4]
+    goal = goal[:4]
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
+    Map = tt_envs.MapBound(map_env)
+    
+    ox_map, oy_map = Map.sample_surface(0.1)
+    ox = ox_map
+    oy = oy_map
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    config = {
+       "plot_final_path": False,
+       "plot_rs_path": False,
+       "plot_expand_tree": False,
+       "mp_step": 10,
+       "range_steer_set": 20,
+    }
+    one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    try:
+        # t1 = time.time()
+        path, control_list, rs_path = one_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=False)
+        # t2 = time.time()
+        # print("planning time:", t2 - t1)
+    except: 
+        return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
 def random_generate_goal_one_trailer():
     x_coordinates = random.uniform(-10, 10)
     y_coordinates = random.uniform(-10, 10)
@@ -180,6 +211,8 @@ def random_generate_goal_one_trailer():
 
 def query_hybrid_astar_one_trailer(input, goal):
     # fixed to 6-dim
-    transition_list = generate_using_hybrid_astar_one_trailer_modify(input, goal)
+    transition_list = generate_using_hybrid_astar_one_trailer_version1(input, goal)
+    if transition_list is None:
+        transition_list = generate_using_hybrid_astar_one_trailer_version2(input, goal)
     pack_transition_list = pack_transition_with_reward(goal, transition_list)
     return pack_transition_list
