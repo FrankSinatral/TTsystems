@@ -12,7 +12,7 @@ batch_size: 1024
 start_steps: 1000
 update_after: 1000
 update_every: 2000
-save_freq: 100000
+save_freq: 1000
 num_test_episodes: 10
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
@@ -21,7 +21,7 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: True
+whether_astar: False
 
 pretrained: False
 pretrained_itr: 3
