@@ -79,13 +79,13 @@ def main():
     register_tt_envs()
     env = gym.make("tt-reaching-v0", config=config)
     # goals_for_training = [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(-10, -1, 0.1)] + [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(1, 10, 0.1)]
-    seed = 80
+    seed = 60
     model = SAC_stable('MultiInputPolicy', env, verbose=1, 
-                tensorboard_log="train_one_shot/", 
+                tensorboard_log="runs_stable_rl_tt_reaching/", 
                 buffer_size=int(1e6),
                 learning_rate=1e-3,
                 learning_starts=1000,
-                gamma=0.99, batch_size=1024, tau=0.05,
+                gamma=0.95, batch_size=1024, tau=0.05,
                 policy_kwargs=dict(net_arch=[512, 512, 512]),
                 seed=seed)
     # her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
@@ -102,7 +102,7 @@ def main():
     
     # LEARNING_STEPS = int(2e7)  # 总学习步数
     SAVE_INTERVAL = int(1e6)  # save interval
-    save_dir = "train_one_shot/" + 'one_trailer_' + str(seed) + '/'   # save_dir
+    save_dir = "runs_stable_rl_tt_reaching/" + 'one_trailer_' + str(seed) + '/'   # save_dir
 
     # make sure the save_dir exist
     os.makedirs(save_dir, exist_ok=True)

@@ -1,7 +1,7 @@
 allow_backward: true
 distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
 reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
-max_episode_steps: 60
+max_episode_steps: 40
 controlled_vehicle_config:
   max_steer: 0.4
   rb: 1.0
@@ -49,4 +49,4 @@ sparse_reward_threshold: 0.5
 vehicle_type: one_trailer
 verbose: false
 N_steps: 10
-jack_knife_penalty: -100
+jack_knife_penalty: -20

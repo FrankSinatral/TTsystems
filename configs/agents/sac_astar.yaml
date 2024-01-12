@@ -1,10 +1,10 @@
 algo_name: 'sac_astar'
-seed: 30
+seed: 50
 env_name: 'reaching-v0'
-sac_steps_per_epoch: 2000
-sac_epochs: 10000
+sac_steps_per_epoch: 50000
+sac_epochs: 400
 replay_size: 1000000
-gamma: 0.99
+gamma: 0.95
 polyak: 0.95
 lr: 0.001
 alpha: 0.2
@@ -12,8 +12,8 @@ batch_size: 1024
 start_steps: 1000
 update_after: 1000
 update_every: 2000
-save_freq: 1000
-num_test_episodes: 10
+save_freq: 10
+num_test_episodes: 100
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
