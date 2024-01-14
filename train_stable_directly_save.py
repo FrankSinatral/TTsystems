@@ -80,8 +80,9 @@ def main():
     env = gym.make("tt-reaching-v0", config=config)
     # goals_for_training = [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(-10, -1, 0.1)] + [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(1, 10, 0.1)]
     seed = 60
+    tensorboard_log_dir = "runs_stable_rl_tt_reaching/" + 'new_test/' + 'one_trailer_' + str(seed) + '/'
     model = SAC_stable('MultiInputPolicy', env, verbose=1, 
-                tensorboard_log="runs_stable_rl_tt_reaching/", 
+                tensorboard_log=tensorboard_log_dir, 
                 buffer_size=int(1e6),
                 learning_rate=1e-3,
                 learning_starts=1000,
@@ -101,15 +102,15 @@ def main():
     LEARNING_STEPS = int(2e7) # @param {type: "number"}
     
     # LEARNING_STEPS = int(2e7)  # 总学习步数
-    SAVE_INTERVAL = int(1e6)  # save interval
-    save_dir = "runs_stable_rl_tt_reaching/" + 'one_trailer_' + str(seed) + '/'   # save_dir
+    SAVE_INTERVAL = int(5e5)  # save interval
+    save_dir = "runs_stable_rl_tt_reaching/" + 'new_test/' + 'one_trailer_' + str(seed) + '/'   # save_dir
 
     # make sure the save_dir exist
     os.makedirs(save_dir, exist_ok=True)
 
     for step in range(0, LEARNING_STEPS, SAVE_INTERVAL):
         # 执行一定数量的学习步骤
-        model.learn(SAVE_INTERVAL, tb_log_name='one_trailer', reset_num_timesteps=False)
+        model.learn(SAVE_INTERVAL, tb_log_name='tensorboard_log', reset_num_timesteps=False)
 
         # 保存模型和重放缓冲区
         model_file = os.path.join(save_dir, f"model_{step + SAVE_INTERVAL}")

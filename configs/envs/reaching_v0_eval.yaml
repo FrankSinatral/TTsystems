@@ -1,6 +1,7 @@
 allow_backward: true
 distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
 reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
+max_episode_steps: 40
 controlled_vehicle_config:
   max_steer: 0.4
   rb: 1.0
@@ -28,13 +29,12 @@ goal_region_bound:
   x_max: 10
   y_min: -10
   y_max: 10
-max_episode_steps: 60
 outer_wall_bound:
   x_min: -80
   x_max: 80
   y_min: -80
   y_max: 80 
-reward_type: potential_reward
+reward_type: sparse_reward
 start_region_bound:
   x_min: 0
   x_max: 0
