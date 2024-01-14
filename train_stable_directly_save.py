@@ -79,31 +79,31 @@ def main():
     register_tt_envs()
     env = gym.make("tt-reaching-v0", config=config)
     # goals_for_training = [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(-10, -1, 0.1)] + [(a, 0.0, 0.0, 0.0, 0.0, 0.0) for a in np.arange(1, 10, 0.1)]
-    seed = 60
-    tensorboard_log_dir = "runs_stable_rl_tt_reaching/" + 'new_test/' + 'one_trailer_' + str(seed) + '/'
-    model = SAC_stable('MultiInputPolicy', env, verbose=1, 
-                tensorboard_log=tensorboard_log_dir, 
-                buffer_size=int(1e6),
-                learning_rate=1e-3,
-                learning_starts=1000,
-                gamma=0.95, batch_size=1024, tau=0.05,
-                policy_kwargs=dict(net_arch=[512, 512, 512]),
-                seed=seed)
-    # her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
-    # model = SAC_stable('MultiInputPolicy', env, replay_buffer_class=HerReplayBuffer,
-    #         replay_buffer_kwargs=her_kwargs, verbose=1, 
-    #         tensorboard_log="runs_stable_rl_tt_reaching", 
-    #         buffer_size=int(1e6),
-    #         learning_rate=1e-3,
-    #         learning_starts=1000,
-    #         gamma=0.95, batch_size=1024, tau=0.05,
-    #         policy_kwargs=dict(net_arch=[512, 512, 512]),
-    #         seed=20)
+    seed = 30
+    tensorboard_log_dir = "runs_stable_rl_tt_reaching/" + 'new_test/' + 'one_trailer_her' + str(seed) + '/'
+    # model = SAC_stable('MultiInputPolicy', env, verbose=1, 
+    #             tensorboard_log=tensorboard_log_dir, 
+    #             buffer_size=int(1e6),
+    #             learning_rate=1e-3,
+    #             learning_starts=1000,
+    #             gamma=0.95, batch_size=1024, tau=0.05,
+    #             policy_kwargs=dict(net_arch=[512, 512, 512]),
+    #             seed=seed)
+    her_kwargs = dict(n_sampled_goal=4, goal_selection_strategy='future', copy_info_dict=True)
+    model = SAC_stable('MultiInputPolicy', env, replay_buffer_class=HerReplayBuffer,
+            replay_buffer_kwargs=her_kwargs, verbose=1, 
+            tensorboard_log=tensorboard_log_dir, 
+            buffer_size=int(1e6),
+            learning_rate=1e-3,
+            learning_starts=1000,
+            gamma=0.95, batch_size=1024, tau=0.05,
+            policy_kwargs=dict(net_arch=[512, 512, 512]),
+            seed=seed)
     LEARNING_STEPS = int(2e7) # @param {type: "number"}
     
     # LEARNING_STEPS = int(2e7)  # 总学习步数
     SAVE_INTERVAL = int(5e5)  # save interval
-    save_dir = "runs_stable_rl_tt_reaching/" + 'new_test/' + 'one_trailer_' + str(seed) + '/'   # save_dir
+    save_dir = "runs_stable_rl_tt_reaching/" + 'new_test/' + 'one_trailer_her' + str(seed) + '/'   # save_dir
 
     # make sure the save_dir exist
     os.makedirs(save_dir, exist_ok=True)
