@@ -1,5 +1,5 @@
 algo_name: 'sac_astar'
-seed: 30
+seed: 60
 env_name: 'reaching-v0'
 sac_steps_per_epoch: 50000
 sac_epochs: 400

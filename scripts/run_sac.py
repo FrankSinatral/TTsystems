@@ -32,12 +32,15 @@ def get_current_time_format():
 def main():
     # parser = get_config()
     # args = parser.parse_args()
+    with open("configs/envs/reaching_v0.yaml", 'r') as file:
+        config = yaml.safe_load(file)
     with open("configs/agents/sac_astar.yaml", 'r') as file:
         config_algo = yaml.safe_load(file)
     
     env_name = config_algo['env_name']
     seed = config_algo['seed']
-    exp_name = env_name + '_' + config_algo['algo_name'] + '_' + str(seed) + '_' + get_current_time_format()
+    vehicle_type = config['vehicle_type']
+    exp_name = env_name + '_' + config_algo['algo_name'] + '_' + vehicle_type + '_' + str(seed) + '_' + get_current_time_format()
     logger_kwargs = {
         'output_dir': config_algo['logging_dir'] + exp_name,
         'output_fname': config_algo['output_fname'],
@@ -73,8 +76,7 @@ def main():
     #     "sucess_goal_reward_others": args.sucess_goal_reward_others,
     #     "continuous_step": args.continuous_step,
     # }
-    with open("configs/envs/reaching_v0.yaml", 'r') as file:
-        config = yaml.safe_load(file)
+    
     
     agent = agents.SAC_ASTAR(env_fn=gym_reaching_tt_env_fn,
                 algo=config_algo['algo_name'],

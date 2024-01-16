@@ -46,7 +46,7 @@ sucess_goal_reward_sparse: 15
 diff_distance_threshold: 0.1
 potential_reward_threshold: 0.5
 sparse_reward_threshold: 0.5
-vehicle_type: one_trailer
+vehicle_type: three_trailer
 verbose: false
 N_steps: 10
 jack_knife_penalty: -20
