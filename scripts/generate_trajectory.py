@@ -142,6 +142,7 @@ def generate_using_hybrid_astar_one_trailer_modify(input, goal, x_scale=3, y_sca
        "plot_expand_tree": False,
        "mp_step": mp_step,
        "range_steer_set": 20,
+       "heuristic_type": "traditional",
     }
     one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:
@@ -179,8 +180,8 @@ def query_hybrid_astar_one_trailer(input, goal):
 
 
 def test_single():
-    input = np.array([4, 5.5, np.deg2rad(15.0), np.deg2rad(30.0)])
-    goal = np.array([-3,-1,np.deg2rad(-170.0),np.deg2rad(-150.0)])
+    input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    goal = np.array([3,-8,np.deg2rad(-170.0),np.deg2rad(-150.0)])
     transition_list = generate_using_hybrid_astar_one_trailer_modify(input, goal)
     # transition_list = generate_using_hybrid_astar_one_trailer(goal)
     return transition_list
