@@ -15,6 +15,10 @@ import tractor_trailer_envs as tt_envs
 import pickle
 import torch
 
+import gymnasium as gym
+import rl_agents as agents
+import yaml
+import torch.nn as nn
 import curves_generator
 
 import planner_zoo.hybrid_astar_planner.hybrid_astar as hyastar
@@ -25,6 +29,9 @@ def plot_rs_path(rspath, ox, oy):
     xlist = rspath.x
     ylist = rspath.y
     plt.plot(xlist, ylist, 'r')
+    
+def gym_reaching_tt_env_fn(config: dict): 
+    return gym.make("tt-reaching-v0", config=config)
     
 def extract_rs_path_control(rspath, max_steer, maxc, N_step=10, max_step_size=0.2):
     """extract rs path control from a given rs path
@@ -2370,7 +2377,36 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
     #     return cost
     
-       
+    def calc_hybrid_cost_new_critic(self, n_curr, n_goal):
+        heuristic_nn = self.heuristic_nn_one_trailer(n_curr, n_goal)
+        heuristic_holonomic_obstacles = hyastar.calc_holonomic_heuristic_with_obstacle_value(n_curr, self.hmap, self.ox, self.oy, self.heuristic_reso)
+        # heuristic_holonomic_obstacles = hmap[n_curr.xind - P.minx][n_curr.yind - P.miny]
+        cost = n_curr.cost + \
+            self.cost["h_cost"] * max(heuristic_holonomic_obstacles, heuristic_nn)
+
+        return cost
+    
+    def heuristic_nn_one_trailer(self, n_curr, n_goal):
+        n_curr_x = n_curr.x[-1]
+        n_curr_y = n_curr.y[-1]
+        n_curr_yaw = n_curr.yaw[-1]
+        n_curr_yawt1 = n_curr.yawt1[-1]
+        curr_state = np.array([n_curr_x, n_curr_y, n_curr_yaw, n_curr_yawt1, 0, 0], dtype=np.float32)
+        n_goal_x = n_goal.x[-1]
+        n_goal_y = n_goal.y[-1]
+        n_goal_yaw = n_goal.yaw[-1]
+        n_goal_yawt1 = n_goal.yawt1[-1]
+        goal_state = np.array([n_goal_x, n_goal_y, n_goal_yaw, n_goal_yawt1, 0, 0], dtype=np.float32)
+        o = np.concatenate([curr_state, curr_state, goal_state])
+        a = np.array([0.0, 0.0], dtype=np.float32)
+        with torch.no_grad():
+            q1 = self.agent.ac.q1(torch.as_tensor(o).unsqueeze(0).to(self.device), torch.as_tensor(a).unsqueeze(0).to(self.device))
+            q2 = self.agent.ac.q2(torch.as_tensor(o).unsqueeze(0).to(self.device), torch.as_tensor(a).unsqueeze(0).to(self.device))
+            critic_value = ((q1 + q2) / 2).item()
+         
+        return critic_value
+    
+    
     def plan(self, start:np.ndarray, goal:np.ndarray, get_control_sequence:bool, verbose=False, *args, **kwargs):
         """
         Main Planning Algorithm for 3-tt systems
@@ -2390,17 +2426,62 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         self.syawr = round(self.syaw / self.yawreso)
         self.gyawr = round(self.gyaw / self.yawreso)
         
-        if self.heuristic_type == "critic":
-            # TODO: may change the file name, currently not using
-            with open(f'HybridAstarPlanner/supervised_data.pkl', 'rb') as f:
-                data_dict = pickle.load(f)
-            # inputs_tensor = torch.tensor(data_dict['inputs'], dtype=torch.float32)
-            labels_tensor = torch.tensor(data_dict['labels'], dtype=torch.float32)
-            # inputs = data_dict['inputs']
-            # labels = data_dict['labels']
-            labels_mean = labels_tensor.mean()
-            labels_std = labels_tensor.std()
-            # labels_normalized = (labels_tensor - labels_mean) / labels_std
+        
+        if self.heuristic_type == "nn":
+            self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            with open("configs/agents/sac_astar.yaml", 'r') as file:
+                config_algo = yaml.safe_load(file)
+            
+            env_name = config_algo['env_name']
+            seed = config_algo['seed']
+            exp_name = env_name + '_' + config_algo['algo_name'] + '_' + str(seed)
+            logger_kwargs = {
+                'output_dir': config_algo['logging_dir'] + exp_name,
+                'output_fname': config_algo['output_fname'],
+                'exp_name': exp_name,
+            }
+            if config_algo['activation'] == 'ReLU':
+                activation_fn = nn.ReLU
+            elif config_algo['activation'] == 'Tanh':
+                activation_fn = nn.Tanh
+            else:
+                raise ValueError(f"Unsupported activation function: {config_algo['activation']}")
+            ac_kwargs = {
+                "hidden_sizes": tuple(config_algo['hidden_sizes']),
+                "activation": activation_fn
+            }
+            with open("configs/envs/reaching_v0_eval.yaml", 'r') as file:
+                config = yaml.safe_load(file)
+            
+            self.agent = agents.SAC_ASTAR(env_fn=gym_reaching_tt_env_fn,
+                        algo=config_algo['algo_name'],
+                        ac_kwargs=ac_kwargs,
+                        seed=seed,
+                        steps_per_epoch=config_algo['sac_steps_per_epoch'],
+                        epochs=config_algo['sac_epochs'],
+                        replay_size=config_algo['replay_size'],
+                        gamma=config_algo['gamma'],
+                        polyak=config_algo['polyak'],
+                        lr=config_algo['lr'],
+                        alpha=config_algo['alpha'],
+                        batch_size=config_algo['batch_size'],
+                        start_steps=config_algo['start_steps'],
+                        update_after=config_algo['update_after'],
+                        update_every=config_algo['update_every'],
+                        # missing max_ep_len
+                        logger_kwargs=logger_kwargs, 
+                        save_freq=config_algo['save_freq'],
+                        num_test_episodes=config_algo['num_test_episodes'],
+                        log_dir=config_algo['log_dir'],
+                        whether_her=config_algo['whether_her'],
+                        use_automatic_entropy_tuning=config_algo['use_auto'],
+                        env_name=config_algo['env_name'],
+                        pretrained=config_algo['pretrained'],
+                        pretrained_itr=config_algo['pretrained_itr'],
+                        pretrained_dir=config_algo['pretrained_dir'],
+                        whether_astar=config_algo['whether_astar'],
+                        config=config)
+            self.agent.load('runs_rl/reaching-v0_sac_astar_50_20240112_220524/model_6999999.pth')
         # put the class in this file
         nstart = hyastar.Node_one_trailer(self.vehicle, self.sxr, self.syr, self.syawr, 1, [self.sx], [self.sy], [self.pi_2_pi(self.syaw)], [self.pi_2_pi(self.syawt1)], [1], 0.0, 0.0, -1)
         ngoal = hyastar.Node_one_trailer(self.vehicle, self.gxr, self.gyr, self.gyawr, 1, [self.gx], [self.gy], [self.pi_2_pi(self.gyaw)], [self.pi_2_pi(self.gyawt1)], [1], 0.0, 0.0, -1)
@@ -2428,14 +2509,14 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle(nstart, ngoal))
             else:
                 # here you need to change this heuristic
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle_critic(nstart, labels_mean, labels_std))
+                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle_critic(nstart, ngoal))
         else:
             if self.heuristic_type == "traditional":
                 self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new(nstart, ngoal))
             else:
                 # here you need to change this heuristic
                 # not using
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new_critic(nstart, labels_mean, labels_std))
+                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new_critic(nstart, ngoal))
         # an indicator whether find the rs path at last
         find_rs_path = False
         # the loop number for analystic expansion
@@ -2488,12 +2569,12 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                         if self.heuristic_type == "traditional":
                             self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle(node, ngoal))
                         else:
-                            self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle_critic(node, ngoal, labels_mean, labels_std))
+                            self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle_critic(node, ngoal))
                     else:
                         if self.heuristic_type == "traditional":
                             self.qp.put(node_ind, self.calc_hybrid_cost_new(node, ngoal))
                         else:
-                            self.qp.put(node_ind, self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std))
+                            self.qp.put(node_ind, self.calc_hybrid_cost_new_critic(node, ngoal))
                 else:
                     if open_set[node_ind].cost > node.cost:
                         open_set[node_ind] = node
@@ -2503,12 +2584,12 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                 if self.heuristic_type == "traditional":
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle(node, ngoal)
                                 else:
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle_critic(node, ngoal, labels_mean, labels_std)   
+                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle_critic(node, ngoal)   
                             else:
                                 if self.heuristic_type == "traditional":
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_new(node, ngoal)
                                 else:
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std)
+                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_new_critic(node, ngoal)
             # if self.config["plot_expand_tree"]:
             #     self.plot_expand_tree(start, goal, closed_set, open_set)
             #     plt.close()               
