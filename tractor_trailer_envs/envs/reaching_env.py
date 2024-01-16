@@ -482,6 +482,10 @@ class TractorTrailerReachingEnv(Env):
         action_clipped = np.clip(action, -self.act_limit, self.act_limit)
         for _ in range(self.config["N_steps"]):
             self.controlled_vehicle.step(action_clipped, self.dt, self.config["allow_backward"])
+            # Fank: when evaluating, we want every precise timestep state
+            if self.evaluate_mode:
+                self.state_list.append(self.controlled_vehicle.observe())
+                self.action_list.append(action_clipped)
         
         # action_direction = 1 if action_clipped[0] >= 0 else -1
             
@@ -534,9 +538,9 @@ class TractorTrailerReachingEnv(Env):
         if self.current_step >= self.config["max_episode_steps"]:
             self.truncated = True
         
-        if self.evaluate_mode:
-            self.state_list.append(self.controlled_vehicle.observe())
-            self.action_list.append(action_clipped)
+        # if self.evaluate_mode:
+        #     self.state_list.append(self.controlled_vehicle.observe())
+        #     self.action_list.append(action_clipped)
             
         obs_dict = OrderedDict([
             ('observation', self.controlled_vehicle.observe()),
