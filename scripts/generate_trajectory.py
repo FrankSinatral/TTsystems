@@ -223,7 +223,7 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
     t1 = time.time()
-    path, control_list, rs_path = three_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
+    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
     t2 = time.time()
     print("planning time:", t2 - t1)
     # except: 
@@ -257,7 +257,7 @@ def test_single():
     # goal = np.array([3,-8,np.deg2rad(-170.0),np.deg2rad(-150.0)])
     # transition_list = generate_using_hybrid_astar_one_trailer_modify(input, goal)
     input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
-    goal = np.array([10,-10,np.deg2rad(-170.0),np.deg2rad(-170.0), np.deg2rad(-170.0),np.deg2rad(-170.0)])
+    goal = np.array([-10, -10, np.deg2rad(160.0),np.deg2rad(160.0), np.deg2rad(160.0),np.deg2rad(160.0)])
     transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
     # transition_list = generate_using_hybrid_astar_one_trailer(goal)
     return transition_list

@@ -3302,6 +3302,14 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
         return cost
     
+    def calc_hybrid_cost_simplify(self, n_curr, n_goal, rscost):
+        heuristic_non_holonomic = rscost
+        heuristic_holonomic_obstacles = self.hmap[n_curr.xind - self.P.minx][n_curr.yind - self.P.miny]
+        cost = n_curr.cost + \
+             self.cost["h_cost"] * max(heuristic_non_holonomic, heuristic_holonomic_obstacles)
+
+        return cost
+    
     # def calc_hybrid_cost_new_critic(self, n_curr, n_goal, mean, std):
     #     """
     #     A newly implemented function to calculate the heuristic
@@ -3678,8 +3686,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # Input: node - start node
         #        nogal - goal node
         #        maxc - maximum culvature
-        # newly add control list when exploring
-        # newly add control list when exploring
+        # this function adds more information for the rspath we selected
+        
         sx, sy, syaw, syawt1, syawt2, syawt3 = node.x[-1], node.y[-1], node.yaw[-1], node.yawt1[-1], node.yawt2[-1], node.yawt3[-1]
         gx, gy, gyaw, gyawt1, gyawt2, gyawt3 = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1], ngoal.yawt1[-1], ngoal.yawt2[-1], ngoal.yawt3[-1]
         q0 = [sx, sy, syaw]
@@ -3692,12 +3700,41 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         for path in paths:
             rscontrol_list = extract_rs_path_control(path, self.vehicle.MAX_STEER, maxc)
             control_list = action_recover_from_planner(rscontrol_list)
-            path.x, path.y, path.yaw, path.yawt1, path.yawt2, path.yawt3, path.directions, path.valid = self.forward_simulation_three_trailer(input, goal, control_list)
+            path.x, path.y, path.yaw, path.yawt1, path.yawt2, path.yawt3, path.directions, path.info = self.forward_simulation_three_trailer_modify(input, goal, control_list)
             path.lengths = [l / maxc for l in path.lengths]
             path.L = path.L / maxc
             # add rscontrollist once search the path
             path.rscontrollist = rscontrol_list
-            
+            # put calc_rs_cost_here
+            path.rscost = self.calc_rs_path_cost_three_trailer_modify(path)
+            # Fank: check here if there is jack_knife
+            if path.info["accept"] and (not path.info["collision"]):    
+                xind = round(path.x[-1] / self.xyreso)
+                yind = round(path.y[-1] / self.xyreso)
+                yawind = round(path.yaw[-1] / self.yawreso)
+                direction = path.directions[-1]
+                fpind =  self.calc_index(node) 
+                fcost = node.cost + path.rscost
+                fx = path.x[1:]
+                fy = path.y[1:]
+                fyaw = path.yaw[1:]
+                fyawt1 = path.yawt1[1:]
+                fyawt2 = path.yawt2[1:]
+                fyawt3 = path.yawt3[1:]
+                fd = []
+                for d in path.directions[1:]:
+                    if d >= 0:
+                        fd.append(1.0)
+                    else:
+                        fd.append(-1.0)
+                fsteer = 0.0
+                try:
+                    final_node = hyastar.Node_three_trailer(self.vehicle, xind, yind, yawind, direction,
+                        fx, fy, fyaw, fyawt1, fyawt2, fyawt3, fd, fsteer, fcost, fpind)
+                    path.info["jack_knife"] = False
+                    path.info["final_node"] = final_node
+                except:
+                    path.info["jack_knife"] = True
 
         return paths
     
@@ -3761,6 +3798,91 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         else:
             
             info = True
+        return path_x_list, path_y_list, path_yaw_list, path_yawt1_list, path_yawt2_list, path_yawt3_list, directions, info
+    
+    def forward_simulation_three_trailer_modify(self, input, goal, control_list, simulation_freq=10):
+        # Fank: use the rs_path control we extract to forward simulation to 
+        # check whether suitable this path
+        # control_list: clip to [-1,1]
+        config_dict = {
+            "w": 2.0, #[m] width of vehicle
+            "wb": 3.5, #[m] wheel base: rear to front steer
+            "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+            "rf": 4.5, #[m] distance from rear to vehicle front end
+            "rb": 1.0, #[m] distance from rear to vehicle back end
+            "tr": 0.5, #[m] tyre radius
+            "tw": 1.0, #[m] tyre width
+            "rtr": 2.0, #[m] rear to trailer wheel
+            "rtf": 1.0, #[m] distance from rear to trailer front end
+            "rtb": 3.0, #[m] distance from rear to trailer back end
+            "rtr2": 2.0, #[m] rear to second trailer wheel
+            "rtf2": 1.0, #[m] distance from rear to second trailer front end
+            "rtb2": 3.0, #[m] distance from rear to second trailer back end
+            "rtr3": 2.0, #[m] rear to third trailer wheel
+            "rtf3": 1.0, #[m] distance from rear to third trailer front end
+            "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+            "max_steer": 0.6, #[rad] maximum steering angle
+            "v_max": 2.0, #[m/s] maximum velocity 
+            "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "xi_max": (np.pi) / 4, # jack-knife constraint  
+        }
+        path_x_list, path_y_list, path_yaw_list, path_yawt1_list = [], [], [], []
+        path_yawt2_list, path_yawt3_list = [], []
+        directions = []
+        controlled_vehicle = tt_envs.ThreeTrailer(config_dict)
+        controlled_vehicle.reset(*input)
+        path_x, path_y, path_yaw, path_yawt1, path_yawt2, path_yawt3 = controlled_vehicle.state
+        path_x_list.append(path_x)
+        path_y_list.append(path_y)
+        path_yaw_list.append(path_yaw)
+        path_yawt1_list.append(path_yawt1)
+        path_yawt2_list.append(path_yawt2)
+        path_yawt3_list.append(path_yawt3)
+        for action_clipped in control_list:
+            if action_clipped[0] > 0:
+                directions.append(1)
+            else:
+                directions.append(-1)
+            controlled_vehicle.step(action_clipped, 1 / simulation_freq)
+            path_x, path_y, path_yaw, path_yawt1, path_yawt2, path_yawt3 = controlled_vehicle.state
+            path_x_list.append(path_x)
+            path_y_list.append(path_y)
+            path_yaw_list.append(path_yaw)
+            path_yawt1_list.append(path_yawt1)
+            path_yawt2_list.append(path_yawt2)
+            path_yawt3_list.append(path_yawt3)
+            
+        directions.append(directions[-1])
+        final_state = np.array(controlled_vehicle.state)
+        distance_error = np.linalg.norm(goal - final_state)
+        # Fank: accept(false means not good)
+        #       collision(false means no collision)
+        #       jack_knife(false means no jack_knife)
+        info = {
+            "accept": False,
+            "collision": None,
+            "jack_knife": None,
+        }
+        if distance_error > self.config["acceptance_error"]:
+            info["accept"] = False
+        else:
+            info["accept"] = True
+        
+        if info["accept"]:
+            # Fank: check whether collision here
+            ind = range(0, len(path_x_list), self.config["collision_check_step"])
+            pathx = [path_x_list[k] for k in ind]
+            pathy = [path_y_list[k] for k in ind]
+            pathyaw = [path_yaw_list[k] for k in ind]
+            pathyawt1 = [path_yawt1_list[k] for k in ind]
+            pathyawt2 = [path_yawt2_list[k] for k in ind]
+            pathyawt3 = [path_yawt3_list[k] for k in ind]
+            if self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
+                info["collision"] = True
+            else:
+                # no collision
+                info["collision"] = False
+        
         return path_x_list, path_y_list, path_yaw_list, path_yawt1_list, path_yawt2_list, path_yawt3_list, directions, info
     
     def generate_local_course(self, L, lengths, mode, maxc, step_size):
@@ -4056,6 +4178,31 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             return False, None, None, None
         # abandon the first method
         return True, fpath, path.rscontrollist, path
+    
+    def rs_gear(self, node, ngoal):
+        # Fank: put all rs related tech here
+        maxc = math.tan(self.vehicle.MAX_STEER) / self.vehicle.WB
+        # I add a new attribute to this function 
+        # Using a simplified version of calc_all_paths
+        paths = self.calc_all_paths_simplified(node, ngoal, maxc)
+        
+        
+        find_feasible = False
+        if not paths:
+            return find_feasible, None
+        pq = hyastar.QueuePrior()
+        
+        for path in paths:
+            if path.info["jack_knife"] == False:
+                find_feasible = True
+                return find_feasible, path
+            pq.put(path, path.rscost)
+        #TODO: may have to adjust
+        while not pq.empty():
+            path = pq.get()
+            find_feasible = False
+            return find_feasible, path
+        
     
     def extract_path_and_control(self, closed, ngoal, nstart, reverse=False, find_rs_path=True):
         """
@@ -4377,19 +4524,226 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             else:
                 return self.extract_path(closed_set, fnode, nstart), None, None
     
+    def plan_new_version(self, start:np.ndarray, goal:np.ndarray, get_control_sequence:bool, verbose=False, *args, **kwargs):
+        """
+        New Version of Main Planning Algorithm for 3-tt systems
+        this algorithm saves some time
+        :param start: starting point (np_array)
+        :param goal: goal point (np_array)
+        - path: all the six-dim state along the way (using extract function)
+        - rs_path: contains the rspath and rspath control list
+        - control list: rspath control list + expand control list
+        """
+        # input the given information
+        self.sx, self.sy, self.syaw, self.syawt1, self.syawt2, self.syawt3 = start
+        self.gx, self.gy, self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = goal
+        self.syaw, self.syawt1, self.syawt2, self.syawt3 = self.pi_2_pi(self.syaw), self.pi_2_pi(self.syawt1), self.pi_2_pi(self.syawt2), self.pi_2_pi(self.syawt3)
+        self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = self.pi_2_pi(self.gyaw), self.pi_2_pi(self.gyawt1), self.pi_2_pi(self.gyawt2), self.pi_2_pi(self.gyawt3)
+        self.sxr, self.syr = round(self.sx / self.xyreso), round(self.sy / self.xyreso)
+        self.gxr, self.gyr = round(self.gx / self.xyreso), round(self.gy / self.xyreso)
+        self.syawr = round(self.syaw / self.yawreso)
+        self.gyawr = round(self.gyaw / self.yawreso)
+        
+        if self.heuristic_type == "critic":
+            with open(f'HybridAstarPlanner/supervised_data.pkl', 'rb') as f:
+                data_dict = pickle.load(f)
+            # inputs_tensor = torch.tensor(data_dict['inputs'], dtype=torch.float32)
+            labels_tensor = torch.tensor(data_dict['labels'], dtype=torch.float32)
+            # inputs = data_dict['inputs']
+            # labels = data_dict['labels']
+            labels_mean = labels_tensor.mean()
+            labels_std = labels_tensor.std()
+            # labels_normalized = (labels_tensor - labels_mean) / labels_std
+        
+        # initialzie start and goal node class
+        nstart = hyastar.Node_three_trailer(self.vehicle, self.sxr, self.syr, self.syawr, 1, [self.sx], [self.sy], [self.pi_2_pi(self.syaw)], [self.pi_2_pi(self.syawt1)], [self.pi_2_pi(self.syawt2)], [self.pi_2_pi(self.syawt3)], [1], 0.0, 0.0, -1)
+        ngoal = hyastar.Node_three_trailer(self.vehicle, self.gxr, self.gyr, self.gyawr, 1, [self.gx], [self.gy], [self.pi_2_pi(self.gyaw)], [self.pi_2_pi(self.gyawt1)], [self.pi_2_pi(self.gyawt2)], [self.pi_2_pi(self.gyawt3)], [1], 0.0, 0.0, -1)
+        # check whether valid
+        if not self.is_index_ok(nstart, self.config["collision_check_step"]):
+            sys.exit("illegal start configuration")
+        if not self.is_index_ok(ngoal, self.config["collision_check_step"]):
+            sys.exit("illegal goal configuration")
+        # calculate heuristic for obstacle
+        if self.obs:
+            self.hmap = hyastar.calc_holonomic_heuristic_with_obstacle(ngoal, self.P.ox, self.P.oy, self.heuristic_reso, self.heuristic_rr)
+        if self.config["plot_heuristic_nonholonomic"]:
+            self.visualize_hmap(self.hmap)
+        
+        
+        steer_set, direc_set = self.calc_motion_set()
+        # change the way to calc_index
+        open_set, closed_set = {self.calc_index(nstart): nstart}, {}
+        # non_h = calc_non_holonomic_heuritstic(nstart, ngoal, gyawt1, gyawt2, gyawt3, fP)
+        
+        # reset qp for next using
+        self.qp.reset()
+        # an indicator whether find the rs path at last
+        find_rs_path = False
+        # the loop number for analystic expansion
+        count = 0
+        # update parameter
+        update = False
+        # the main change here will be the heuristic value
+        if not self.obs:
+            if self.heuristic_type == "traditional":
+                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle(nstart, ngoal))
+            else:
+                # here you need to change this heuristic
+                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle_critic(nstart, labels_mean, labels_std))
+        else:
+            if self.heuristic_type == "traditional":
+                find_feasible, path = self.rs_gear(nstart, ngoal)
+                if find_feasible:
+                    fnode = path.info["final_node"]
+                    find_rs_path = True
+                    update = find_feasible
+                    rs_path = path
+                    rs_control_list = path.rscontrollist
+                    if self.config["plot_expand_tree"]:
+                        plot_rs_path(rs_path, self.ox, self.oy)
+                        self.plot_expand_tree(start, goal, closed_set, open_set)
+                        
+                    # plt.close()
+                    if verbose:
+                        print("find path at first time")
+                    closed_set[self.calc_index(nstart)] = nstart
+                else:
+                    self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rscost))
+            else:
+                # here you need to change this heuristic
+                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new_critic(nstart, labels_mean, labels_std))
+        
+        # Main Loop
+        while True:
+            if update:
+                break
+            # I will try not to use this
+            # may need to modify when there's obstacle
+            if not open_set or self.qp.empty():
+                # consider this function
+                print("failed finding a feasible path")
+                self.extract_failed_path(closed_set, nstart)
+                return None, None, None
+            count += 1
+            # add if the loop's too much
+            if count > self.max_iter:
+                print("waste a long time to find")
+                return None, None, None
+            
+            ind = self.qp.get()
+            n_curr = open_set[ind]
+            closed_set[ind] = n_curr
+            open_set.pop(ind)
+
+            # expand tree using motion primitive
+            for i in range(len(steer_set)):
+                node = self.calc_next_node(n_curr, ind, steer_set[i], direc_set[i])
+                if not node:
+                    # encounter jack_knife
+                    continue
+                if not self.is_index_ok(node, self.config["collision_check_step"]):
+                    # check go outside or collision
+                    continue
+                node_ind = self.calc_index(node)
+                if node_ind in closed_set:
+                    # we will not calculate twice 
+                    # Note that this can be a limitation
+                    continue
+                if node_ind not in open_set:
+                    open_set[node_ind] = node
+                    if not self.obs:
+                        if self.heuristic_type == "traditional":
+                            self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle(node, ngoal))
+                        else:
+                            self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle_critic(node, ngoal, labels_mean, labels_std))
+                    else:
+                        if self.heuristic_type == "traditional":
+                            find_feasible, path = self.rs_gear(node, ngoal)
+                            if find_feasible:
+                                fnode = path.info["final_node"]
+                                find_rs_path = True
+                                update = find_feasible
+                                rs_path = path
+                                rs_control_list = path.rscontrollist
+                                if self.config["plot_expand_tree"]:
+                                    plot_rs_path(rs_path, self.ox, self.oy)
+                                    self.plot_expand_tree(start, goal, closed_set, open_set)
+                                    # plt.close()
+                                if verbose:
+                                    print("final expansion node number:", count)
+                                # Here you need to add node to closed set
+                                closed_set[node_ind] = node
+                                break
+                            else:
+                                self.qp.put(node_ind, self.calc_hybrid_cost_simplify(node, ngoal, path.rscost))
+                        else:
+                            self.qp.put(node_ind, self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std))
+                else:
+                    if open_set[node_ind].cost > node.cost:
+                        open_set[node_ind] = node
+                        if self.qp_type == "heapdict":  
+                            # if using heapdict, here you can modify the value
+                            if not self.obs:
+                                if self.heuristic_type == "traditional":
+                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle(node, ngoal)
+                                else:
+                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle_critic(node, ngoal, labels_mean, labels_std)   
+                            else:
+                                if self.heuristic_type == "traditional":
+                                    find_feasible, path = self.rs_gear(node, ngoal)
+                                    if find_feasible:
+                                        fnode = path.info["final_node"]
+                                        find_rs_path = True
+                                        update = find_feasible
+                                        rs_path = path
+                                        rs_control_list = path.rscontrollist
+                                        if self.config["plot_expand_tree"]:
+                                            plot_rs_path(rs_path, self.ox, self.oy)
+                                            self.plot_expand_tree(start, goal, closed_set, open_set)
+                                            # plt.close()
+                                        if verbose:
+                                            print("final expansion node number:", count)
+                                        closed_set[node_ind] = node
+                                        break
+                                    else:
+                                        self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rscost)
+                                        
+                                else:
+                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std)
+            # if self.config["plot_expand_tree"]:
+            #     self.plot_expand_tree(start, goal, closed_set, open_set)
+            #     plt.close()               
+        if verbose:
+            print("final expand node: ", len(open_set) + len(closed_set))
+        
+        if get_control_sequence:
+            path, expand_control_list = self.extract_path_and_control(closed_set, fnode, nstart,find_rs_path=find_rs_path)
+            if find_rs_path:
+                all_control_list = expand_control_list + rs_control_list
+            else:
+                rs_path = None
+                all_control_list = all_control_list
+            return path, all_control_list, rs_path
+        else:
+            if find_rs_path: 
+                return self.extract_path(closed_set, fnode, nstart), None, rs_path
+            else:
+                return self.extract_path(closed_set, fnode, nstart), None, None
+    
     def plot_expand_tree(self, start, goal, closed_set, open_set):
         plt.axis("equal")
         ax = plt.gca() 
         plt.plot(self.ox, self.oy, 'sk', markersize=1)
-        self.vehicle.reset(*goal)
         
-        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
-        self.vehicle.reset(*start)
-        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'gray')
         for key, value in open_set.items():
             self.plot_node(value, color='gray')
         for key, value in closed_set.items():
             self.plot_node(value, color='red')
+        self.vehicle.reset(*goal)
+        
+        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        self.vehicle.reset(*start)
+        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
     
     def plot_node(self, node, color):
         xlist = node.x
