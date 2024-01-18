@@ -2817,6 +2817,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "plot_expand_tree": True,
             "plot_final_path": True,
             "range_steer_set": 8, #need to set the same as n_steer
+            "acceptance_error": 0.5,
         }
     
     def configure(self, config: Optional[dict]):
@@ -3427,6 +3428,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         """
         # check node index
         # check whether to go outside
+        # TODO: check whether this is necessary
         if node.xind <= self.P.minx or \
                 node.xind >= self.P.maxx or \
                 node.yind <= self.P.miny or \
@@ -3671,7 +3673,38 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
         return paths
     
+    def calc_all_paths_simplified(self, node, ngoal, maxc):
+        # Fank: 
+        # Input: node - start node
+        #        nogal - goal node
+        #        maxc - maximum culvature
+        # newly add control list when exploring
+        # newly add control list when exploring
+        sx, sy, syaw, syawt1, syawt2, syawt3 = node.x[-1], node.y[-1], node.yaw[-1], node.yawt1[-1], node.yawt2[-1], node.yawt3[-1]
+        gx, gy, gyaw, gyawt1, gyawt2, gyawt3 = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1], ngoal.yawt1[-1], ngoal.yawt2[-1], ngoal.yawt3[-1]
+        q0 = [sx, sy, syaw]
+        q1 = [gx, gy, gyaw]
+        input = np.array([sx, sy, syaw, syawt1, syawt2, syawt3])
+        goal = np.array([gx, gy, gyaw, gyawt1, gyawt2, gyawt3])
+
+        paths = curves_generator.generate_path(q0, q1, maxc)
+
+        for path in paths:
+            rscontrol_list = extract_rs_path_control(path, self.vehicle.MAX_STEER, maxc)
+            control_list = action_recover_from_planner(rscontrol_list)
+            path.x, path.y, path.yaw, path.yawt1, path.yawt2, path.yawt3, path.directions, path.valid = self.forward_simulation_three_trailer(input, goal, control_list)
+            path.lengths = [l / maxc for l in path.lengths]
+            path.L = path.L / maxc
+            # add rscontrollist once search the path
+            path.rscontrollist = rscontrol_list
+            
+
+        return paths
+    
     def forward_simulation_three_trailer(self, input, goal, control_list, simulation_freq=10):
+        # Fank: use the rs_path control we extract to forward simulation to 
+        # check whether suitable this path
+        # control_list: clip to [-1,1]
         config_dict = {
             "w": 2.0, #[m] width of vehicle
             "wb": 3.5, #[m] wheel base: rear to front steer
@@ -3723,10 +3756,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
         distance_error = np.linalg.norm(goal - final_state)
-        if distance_error < 0.5:
-            info = True
-        else:
+        if distance_error > self.config["acceptance_error"]:
             info = False
+        else:
+            
+            info = True
         return path_x_list, path_y_list, path_yaw_list, path_yawt1_list, path_yawt2_list, path_yawt3_list, directions, info
     
     def generate_local_course(self, L, lengths, mode, maxc, step_size):
