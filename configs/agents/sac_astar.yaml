@@ -21,8 +21,8 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: True
+whether_astar: False
 
-pretrained: False
-pretrained_itr: 3
-pretrained_dir: 'runs_rl/reaching-v0_sac_astar_10_20240107_143228/'
+pretrained: True
+pretrained_itr: 6999999
+pretrained_dir: 'runs_rl/reaching-v0_sac_astar_50_20240112_220524/'
