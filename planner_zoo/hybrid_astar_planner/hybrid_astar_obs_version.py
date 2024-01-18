@@ -3227,7 +3227,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             path = pq.get()
             if count == 0:
                 path_first = path
-            steps = [self.step_size * d for d in path.directions]
             if self.config["plot_rs_path"]:
                 plot_rs_path(path, self.ox, self.oy)
                 plt.close()
@@ -3663,7 +3662,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             path.lengths = [l / maxc for l in path.lengths]
             path.L = path.L / maxc
             # add rscontrollist once search the path
-            path.rscontrollist = control_list
+            path.rscontrollist = rscontrol_list
             
 
         return paths
@@ -4078,10 +4077,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             files = os.listdir(save_dir)
             
             file_index = 0
-            file_name = f"hybrid_expand_tree_one_trailer_{file_index}.png"
+            file_name = f"hybrid_expand_tree_three_trailer_{file_index}.png"
             while file_name in files:
                 file_index += 1
-                file_name = f"hybrid_expand_tree_one_trailer_{file_index}.png"
+                file_name = f"hybrid_expand_tree_three_trailer_{file_index}.png"
             plt.savefig(os.path.join(save_dir, file_name))
             plt.close()  
          
