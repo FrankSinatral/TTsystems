@@ -70,6 +70,51 @@ def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
         print("Reject")
         return None
     
+def forward_simulation_three_trailer(input, goal, control_list, simulation_freq):
+    # Pack every 10 steps to add to buffer
+    config_dict = {
+        "w": 2.0, #[m] width of vehicle
+        "wb": 3.5, #[m] wheel base: rear to front steer
+        "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+        "rf": 4.5, #[m] distance from rear to vehicle front end
+        "rb": 1.0, #[m] distance from rear to vehicle back end
+        "tr": 0.5, #[m] tyre radius
+        "tw": 1.0, #[m] tyre width
+        "rtr": 2.0, #[m] rear to trailer wheel
+        "rtf": 1.0, #[m] distance from rear to trailer front end
+        "rtb": 3.0, #[m] distance from rear to trailer back end
+        "rtr2": 2.0, #[m] rear to second trailer wheel
+        "rtf2": 1.0, #[m] distance from rear to second trailer front end
+        "rtb2": 3.0, #[m] distance from rear to second trailer back end
+        "rtr3": 2.0, #[m] rear to third trailer wheel
+        "rtf3": 1.0, #[m] distance from rear to third trailer front end
+        "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+        "max_steer": 0.6, #[rad] maximum steering angle
+        "v_max": 2.0, #[m/s] maximum velocity 
+        "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+        "xi_max": (np.pi) / 4, # jack-knife constraint  
+    }
+    transition_list = []
+    
+    
+    controlled_vehicle = tt_envs.ThreeTrailer(config_dict)
+    controlled_vehicle.reset(*input)
+    state = controlled_vehicle.observe()
+    for action_clipped in control_list:
+        controlled_vehicle.step(action_clipped, 1 / simulation_freq)
+        next_state = controlled_vehicle.observe()
+        transition = [state, action_clipped, next_state]
+        transition_list.append(transition)
+        state = next_state
+    final_state = np.array(controlled_vehicle.state)
+    distance_error = np.linalg.norm(goal - final_state)
+    if distance_error < 0.5:
+        print("Accept")
+        return transition_list
+    else:
+        print("Reject")
+        return None
+    
 def pack_transition(transition_list):
     # for rl training
     pack_transition_list = []
@@ -202,6 +247,36 @@ def generate_using_hybrid_astar_one_trailer_version2(input, goal):
     transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
     return transition_list
 
+def generate_using_hybrid_astar_three_trailer(input, goal):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
+    Map = tt_envs.MapBound(map_env)
+    
+    ox_map, oy_map = Map.sample_surface(0.1)
+    ox = ox_map
+    oy = oy_map
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    config = {
+       "plot_final_path": False,
+       "plot_rs_path": False,
+       "plot_expand_tree": False,
+       "mp_step": 10,
+       "range_steer_set": 20,
+    }
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    try:
+        t1 = time.time()
+        path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+        t2 = time.time()
+        print("planning time:", t2 - t1)
+    except: 
+        return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list 
+
 def random_generate_goal_one_trailer():
     x_coordinates = random.uniform(-10, 10)
     y_coordinates = random.uniform(-10, 10)
@@ -214,5 +289,11 @@ def query_hybrid_astar_one_trailer(input, goal):
     transition_list = generate_using_hybrid_astar_one_trailer_version1(input, goal)
     if transition_list is None:
         transition_list = generate_using_hybrid_astar_one_trailer_version2(input, goal)
+    pack_transition_list = pack_transition_with_reward(goal, transition_list)
+    return pack_transition_list
+
+def query_hybrid_astar_three_trailer(input, goal):
+    # fixed to 6-dim
+    transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
     pack_transition_list = pack_transition_with_reward(goal, transition_list)
     return pack_transition_list

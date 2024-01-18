@@ -18,7 +18,7 @@ from tqdm import tqdm
 import rl_agents.sac.core as core
 # Try to add logger
 from rl_agents.utils.logx import EpochLogger
-from rl_agents.query_expert import query_hybrid_astar_one_trailer
+from rl_agents.query_expert import query_hybrid_astar_one_trailer, query_hybrid_astar_three_trailer
 import gymnasium as gym
 from gymnasium.spaces import Box
 import random
@@ -243,6 +243,9 @@ class SAC_ASTAR:
             # Create actor-critic module and target networks
             self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
             self.ac_targ = deepcopy(self.ac)
+            
+            # vehicle_type
+            self.vehicle_type = config["vehicle_type"]
         
         # set up summary writer
         self.exp_name = logger_kwargs['exp_name']
@@ -482,7 +485,10 @@ class SAC_ASTAR:
     def add_expert_trajectory_to_buffer(self, o):
         goal = o["desired_goal"]
         input = o["observation"]
-        pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
+        if self.vehicle_type == "one_trailer":
+            pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
+        elif self.vehicle_type == "three_trailer":
+            pack_transition_list = query_hybrid_astar_three_trailer(input, goal)
         print("Astar Episode Length:", len(pack_transition_list))
         for transition in pack_transition_list:
             o, a, o2, r, d = transition
