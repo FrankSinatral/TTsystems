@@ -3644,6 +3644,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         return paths
     
     def calc_all_paths_modify(self, node, ngoal, maxc, step_size):
+        # Fank: 
+        # Input: node - start node
+        #        nogal - goal node
+        #        maxc - maximum culvature
         # newly add control list when exploring
         # newly add control list when exploring
         sx, sy, syaw, syawt1, syawt2, syawt3 = node.x[-1], node.y[-1], node.yaw[-1], node.yawt1[-1], node.yawt2[-1], node.yawt3[-1]
