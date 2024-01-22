@@ -1,5 +1,5 @@
 algo_name: 'sac_astar'
-seed: 50
+seed: 60
 env_name: 'reaching-v0'
 sac_steps_per_epoch: 50000
 sac_epochs: 400
@@ -21,8 +21,8 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: True
+whether_astar: False
 
-pretrained: False
-pretrained_itr: 19999999
-pretrained_dir: 'runs_rl/reaching-v0_sac_astar_30_20240111_221808/'
+pretrained: True
+pretrained_itr: 499999
+pretrained_dir: 'runs_rl/reaching-v0_sac_astar_three_trailer_40_20240119_001533/'
