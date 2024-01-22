@@ -1,5 +1,5 @@
 algo_name: 'sac_astar'
-seed: 60
+seed: 50
 env_name: 'reaching-v0'
 sac_steps_per_epoch: 50000
 sac_epochs: 400
@@ -21,7 +21,7 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: False
+whether_astar: True
 
 pretrained: False
 pretrained_itr: 19999999
