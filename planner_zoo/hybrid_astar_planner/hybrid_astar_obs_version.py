@@ -1746,6 +1746,17 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             return True
         return False
     
+    def shift_coordinates(self, start, goal):
+        # Fank: the input start and goal should be 1-dim 
+        # np_array
+        # TODO
+        theta = start[2] # get theta
+        shift_start = np.array([0, 0, 0, start[3] - theta, 0, 0])
+        shift_goal = np.array([goal[0] * np.cos(theta) - goal[1] * np.sin(theta) + start[0], \
+            goal[0] * np.sin(theta) + goal[1] * np.cos(theta) + start[1], \
+                goal[2] - theta, goal[3] - theta, 0, 0])
+        return shift_start, shift_goal
+    
     
     def calc_rs_path_cost_one_trailer(self, rspath, yawt1) -> float:
         """
@@ -3342,6 +3353,16 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         ind += (yawt3_ind - self.P.minyawt3) * self.P.xw * self.P.yw * self.P.yaww * self.P.yawt1w * self.P.yawt2w
 
         return ind
+    
+    def shift_coordinates(self, start, goal):
+        # Fank: the input start and goal should be 1-dim 
+        # np_array
+        theta = start[2] # get theta
+        shift_start = np.array([0, 0, 0, start[3] - theta, start[4] - theta, start[5] - theta])
+        shift_goal = np.array([goal[0] * np.cos(theta) - goal[1] * np.sin(theta) + start[0], \
+            goal[0] * np.sin(theta) + goal[1] * np.cos(theta) + start[1], \
+                goal[2] - theta, goal[3] - theta, goal[4] - theta, goal[5] - theta])
+        return shift_start, shift_goal
     
     def calc_next_node(self, n, ind, u, d):
         '''

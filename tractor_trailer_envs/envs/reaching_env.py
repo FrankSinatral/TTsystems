@@ -443,6 +443,20 @@ class TractorTrailerReachingEnv(Env):
             
         return reward
     
+    def sparse_reward_modify(self, state, state_, goal=None):
+        if goal is None:
+            goal = np.array([self.goal], dtype=np.float64)
+        # broadcast
+        new_state_diff = state_ - goal
+        new_weighted_distance = np.sqrt(np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item())
+        
+        if new_weighted_distance < self.config["sparse_reward_threshold"]:
+            reward = self.config['sucess_goal_reward_sparse']
+        else:
+            reward = -1
+            
+        return reward
+    
     def reward(self, old_state, state, goal=None):
         if self.reward_type == "diff_distance":
             reward = self.diff_distance_reward(old_state, state, goal)
@@ -452,6 +466,8 @@ class TractorTrailerReachingEnv(Env):
             reward = self.potential_reward(old_state, state, goal)
         elif self.reward_type == "sparse_reward":
             reward = self.sparse_reward(old_state, state, goal)
+        elif self.reward_type == 'sparse_reward_mod':
+            reward = self.sparse_reward_modify(old_state, state, goal)
         return reward
     
     
@@ -469,6 +485,8 @@ class TractorTrailerReachingEnv(Env):
                 reward = self.potential_reward(info[j]["old_state"], achieved_goal[j], desired_goal[j])
             elif self.reward_type == "sparse_reward":
                 reward = self.sparse_reward(info[j]["old_state"], achieved_goal[j], desired_goal[j])
+            elif self.reward_type == "sparse_reward_mod":
+                reward = self.sparse_reward_modify(info[j]["old_state"], achieved_goal[j], desired_goal[j])
             rewards.append(reward)
         
         return np.array(rewards)
@@ -522,7 +540,7 @@ class TractorTrailerReachingEnv(Env):
             if reward >= self.config['sucess_goal_reward_parking']:
                 self.terminated = True
                 info_dict['is_success'] = True
-        elif self.reward_type == "sparse_reward":
+        elif self.reward_type == "sparse_reward" or self.reward_type == "sparse_reward_mod":
             if reward >= self.config['sucess_goal_reward_sparse']:
                 self.terminated = True
                 info_dict['is_success'] = True
@@ -700,6 +718,7 @@ class TractorTrailerReachingEnv(Env):
             ani.save(base_path + str(save_index) + extension, writer=writer) 
         else:
             ani.save(save_dir, writer=writer)
+        plt.close()
             
 
 class TractorTrailerReachingEnvVersion1(Env):
@@ -1123,6 +1142,8 @@ class TractorTrailerReachingEnvVersion1(Env):
             reward = self.potential_reward(old_state, state, goal)
         elif self.reward_type == "sparse_reward":
             reward = self.sparse_reward(old_state, state, goal)
+        elif self.reward_type == 'sparse_reward_mod':
+            reward = self.sparse_reward_mod(old_state, state, goal)
         return reward
     
     

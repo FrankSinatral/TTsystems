@@ -83,7 +83,7 @@ def main():
                 pretrained_dir=config_algo['pretrained_dir'],
                 whether_astar=config_algo['whether_astar'],
                 config=config)
-    agent.load('runs_rl/reaching-v0_sac_astar_50_20240112_220524/model_6999999.pth')
+    agent.load('runs_rl/reaching-v0_sac_astar_30_20240111_221808/model_19999999.pth')
     
     # agent.ac_targ.q1()
     
@@ -92,7 +92,7 @@ def main():
     success_rate = 0.0
     jack_knife_rate = 0.0
     count = 0
-    for j in range(150, 251):
+    for j in range(100, 1000):
         count += 1
         o, info = agent.test_env.reset(seed=j)
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
@@ -105,8 +105,10 @@ def main():
         average_ep_len += ep_len
         if info['is_success']:
             success_rate += 1
+            print("success in:", j)
         if info['jack_knife']:
             jack_knife_rate += 1
+            print("jack knife in:", j)
         agent.test_env.unwrapped.run_simulation()
     jack_knife_rate /= count
     success_rate /= count
