@@ -48,10 +48,11 @@ class QueuePrior:
         self.counter = 0
 
 class Node_single_tractor:
-    def __init__(self, xind, yind, yawind, direction, x, y,
+    def __init__(self, vehicle, xind, yind, yawind, direction, x, y,
                  yaw, directions, steer, cost, pind):
         # notice that here I don't assume the input
         # but one has to turn the yaw to [-np.pi, np.pi)
+        # the cost will be the value going from the start
         self.xind = xind
         self.yind = yind
         self.yawind = yawind
@@ -59,6 +60,7 @@ class Node_single_tractor:
         self.x = x
         self.y = y 
         self.yaw = yaw
+        self.vehicle = vehicle
         self.directions = directions
         self.steer = steer
         self.cost = cost
@@ -117,6 +119,58 @@ class Node_one_trailer:
                 if val < -self.vehicle.XI_MAX or val > self.vehicle.XI_MAX:
                     raise ValueError("jack-knife configuration")
 
+class Node_two_trailer:
+    def __init__(self, vehicle, xind, yind, yawind, direction, x, y,
+                 yaw, yawt1, yawt2, directions, steer, cost, pind):
+        '''
+        Node class for two trailer vehicle
+        xind: x coordinate
+        direction: 1 for forward; -1 for backward
+        x,y,yaw: list from parent node to this node (parent node not included)
+        yawt1: yaw trailer1 list
+        yawt2: yaw trailer2 list
+        directions: direction list
+        steer: a value
+        cost: node cost(not hybrid cost)
+        pind: parent index
+        '''
+        self.xind = xind
+        self.yind = yind
+        self.yawind = yawind
+        self.direction = direction
+        self.x = x
+        self.y = y
+        self.yaw = yaw
+        self.yawt1 = yawt1
+        self.yawt2 = yawt2
+        self.vehicle = vehicle
+        # here I change the calculate of xi4, xi5
+        self.xi4 = [self.pi_2_pi(x - y) for x, y in zip(self.yawt1, self.yaw)]
+        self.xi5 = [self.pi_2_pi(x - y) for x, y in zip(self.yawt2, self.yawt1)]
+        self._validate_data(self.xi4, self.xi5)
+        self.directions = directions
+        self.steer = steer
+        self.cost = cost
+        self.pind = pind
+    
+    def __str__(self):
+        return f"Node ({self.x[-1]},{self.y[-1]},{self.yaw[-1]},{self.yawt1[-1]}, {self.yawt2[-1]}) with cost {self.cost}"
+    
+    @staticmethod
+    def pi_2_pi(theta):
+        while theta >= np.pi:
+            theta -= 2.0 * np.pi
+
+        while theta < -np.pi:
+            theta += 2.0 * np.pi
+        
+        return theta    
+        
+    def _validate_data(self, xi4, xi5):
+        for lst in [xi4, xi5]:
+            for val in lst:
+                if val < -self.vehicle.XI_MAX or val > self.vehicle.XI_MAX:
+                    raise ValueError("jack-knife configuration")
 
 
 class Node_three_trailer:
@@ -318,24 +372,22 @@ class Path_single_tractor:
     """
     path parameter
     """
-    def __init__(self, x, y, yaw, direction, cost):
+    def __init__(self, x, y, yaw, direction):
         """
-        x, y, yaw, yawt1, direction: list
-        cost: value
+        x, y, yaw, direction: list
         """
         self.x = x
         self.y = y
         self.yaw = yaw
         self.direction = direction
-        self.cost = cost
         
     def __add__(self, other):
         x = self.x + other.x
         y = self.y + other.y
         yaw = self.yaw + other.yaw
         direction = self.direction + other.direction
-        cost = self.cost + other.cost
-        return Path_single_tractor(x, y, yaw, direction, cost)
+        # cost = self.cost + other.cost
+        return Path_single_tractor(x, y, yaw, direction)
 
 class BasicHybridAstarPlanner(ABC):
     PI = np.pi
