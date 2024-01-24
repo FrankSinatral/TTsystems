@@ -32,7 +32,7 @@ def register_tt_envs():
         id="tt-reaching-v0",
         entry_point='tractor_trailer_envs.envs:TractorTrailerReachingEnv'
     )
-    register(
-        id="tt-reaching-v1",
-        entry_point='tractor_trailer_envs.envs:TractorTrailerReachingEnvVersion1'
-    )
+    # register(
+    #     id="tt-reaching-v1",
+    #     entry_point='tractor_trailer_envs.envs:TractorTrailerReachingEnvVersion1'
+    # )
