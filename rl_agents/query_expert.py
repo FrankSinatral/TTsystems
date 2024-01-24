@@ -264,6 +264,7 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
        "plot_expand_tree": False,
        "mp_step": 10,
        "range_steer_set": 20,
+       "max_iter": 20,
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:

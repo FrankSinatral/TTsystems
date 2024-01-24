@@ -56,26 +56,7 @@ def main():
         "hidden_sizes": tuple(config_algo['hidden_sizes']),
         "activation": activation_fn
     }
-    # #TODO: change the api
-    # config = {
-    #     "env_name": args.env_name,
-    #     "reward_type": args.reward_type,
-    #     "xmax": args.xmax, 
-    #     "ymax": args.ymax, # [m]
-    #     "distancematrix": args.distance_weights,
-    #     "reward_weights": args.reward_weights,
-    #     "max_episode_steps": args.max_episode_steps,
-    #     "goal": tuple(args.goal),
-    #     "penalty_backward": args.penalty_backward,
-    #     "penalty_switch": args.penalty_switch,
-    #     "edge": args.edge,
-    #     "save_gif": args.save_gif,
-    #     "allow_backward": args.allow_backward,
-    #     "constraint_coeff": args.constraint_coeff,
-    #     "sucess_goal_reward_parking": args.sucess_goal_reward_parking,
-    #     "sucess_goal_reward_others": args.sucess_goal_reward_others,
-    #     "continuous_step": args.continuous_step,
-    # }
+
     
     
     agent = agents.SAC_ASTAR(env_fn=gym_reaching_tt_env_fn,
