@@ -280,6 +280,41 @@ class Para_one_trailer:
         self.oy = oy
         self.kdtree = kdtree
 
+
+class Para_two_trailer:
+    """
+    This class is for storing the parameters
+    """
+    def __init__(self, minx, miny, minyaw, minyawt1, minyawt2, maxx, maxy, maxyaw, maxyawt1, maxyawt2,
+                  xw, yw, yaww, yawt1w, yawt2w, xyreso, yawreso, ox, oy, kdtree):
+        '''
+        ox, oy: obstacle position
+        yawt1w, yawt2w: width of yawt1/ yawt2
+        '''
+        self.minx = minx
+        self.miny = miny
+        self.minyaw = minyaw
+        self.minyawt1 = minyawt1
+        self.minyawt2 = minyawt2
+        
+        self.maxx = maxx
+        self.maxy = maxy
+        self.maxyaw = maxyaw
+        self.maxyawt1 = maxyawt1
+        self.maxyawt2 = maxyawt2
+        
+        self.xw = xw
+        self.yw = yw
+        self.yaww = yaww
+        self.yawt1w = yawt1w
+        self.yawt2w = yawt2w
+        
+        self.xyreso = xyreso
+        self.yawreso = yawreso
+        self.ox = ox
+        self.oy = oy
+        self.kdtree = kdtree
+
 class Para_three_trailer:
     """
     This class is for storing the parameters
@@ -338,7 +373,36 @@ class Path_one_trailer:
         direction = self.direction + other.direction
         # cost = self.cost + other.cost
         return Path_one_trailer(x, y, yaw, yawt1, direction)
+
+class Path_two_trailer:
+    """
+    path parameter
+    """
+    def __init__(self, x, y, yaw, yawt1, yawt2, direction):
+        """
+        x, y, yaw, yawt1, direction: list
+        cost: value
+        """
+        self.x = x
+        self.y = y
+        self.yaw = yaw
+        self.yawt1 = yawt1
+        self.yawt2 = yawt2
         
+        self.direction = direction
+        # self.cost = cost
+        
+    def __add__(self, other):
+        x = self.x + other.x
+        y = self.y + other.y
+        yaw = self.yaw + other.yaw
+        yawt1 = self.yawt1 + other.yawt1
+        yawt2 = self.yawt2 + other.yawt2
+        
+        direction = self.direction + other.direction
+        # cost = self.cost + other.cost
+        return Path_two_trailer(x, y, yaw, yawt1, yawt2, direction)
+      
 class Path_three_trailer:
     """
     path parameter
