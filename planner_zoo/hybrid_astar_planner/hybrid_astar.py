@@ -318,7 +318,7 @@ class Path_one_trailer:
     """
     path parameter
     """
-    def __init__(self, x, y, yaw, yawt1, direction, cost):
+    def __init__(self, x, y, yaw, yawt1, direction):
         """
         x, y, yaw, yawt1, direction: list
         cost: value
@@ -328,7 +328,7 @@ class Path_one_trailer:
         self.yaw = yaw
         self.yawt1 = yawt1
         self.direction = direction
-        self.cost = cost
+        # self.cost = cost
         
     def __add__(self, other):
         x = self.x + other.x
@@ -336,14 +336,14 @@ class Path_one_trailer:
         yaw = self.yaw + other.yaw
         yawt1 = self.yawt1 + other.yawt1
         direction = self.direction + other.direction
-        cost = self.cost + other.cost
-        return Path_one_trailer(x, y, yaw, yawt1, direction, cost)
+        # cost = self.cost + other.cost
+        return Path_one_trailer(x, y, yaw, yawt1, direction)
         
 class Path_three_trailer:
     """
     path parameter
     """
-    def __init__(self, x, y, yaw, yawt1, yawt2, yawt3, direction, cost):
+    def __init__(self, x, y, yaw, yawt1, yawt2, yawt3, direction):
         """
         x, y, yaw, yawt1, direction: list
         cost: value
@@ -355,7 +355,7 @@ class Path_three_trailer:
         self.yawt2 = yawt2
         self.yawt3 = yawt3
         self.direction = direction
-        self.cost = cost
+        # self.cost = cost
         
     def __add__(self, other):
         x = self.x + other.x
@@ -365,8 +365,8 @@ class Path_three_trailer:
         yawt2 = self.yawt2 + other.yawt2
         yawt3 = self.yawt3 + other.yawt3
         direction = self.direction + other.direction
-        cost = self.cost + other.cost
-        return Path_three_trailer(x, y, yaw, yawt1, yawt2, yawt3, direction, cost)
+        # cost = self.cost + other.cost
+        return Path_three_trailer(x, y, yaw, yawt1, yawt2, yawt3, direction)
 
 class Path_single_tractor:
     """
@@ -419,9 +419,9 @@ class BasicHybridAstarPlanner(ABC):
     def calc_parameters(self):
         pass
 
-    @abstractmethod
-    def plan(self, *args, **kwargs):
-        pass
+    # @abstractmethod
+    # def plan(self, *args, **kwargs):
+    #     pass
     
     @staticmethod
     def pi_2_pi(theta):
