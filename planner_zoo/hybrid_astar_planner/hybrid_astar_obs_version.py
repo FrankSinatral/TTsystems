@@ -2700,98 +2700,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         return steer, direc
     
     
-    
-    def heuristic_RS_cost_three_trailer(self, n_curr, n_goal, plot=False):
-        """
-        calculate heuristic(rs path)
-        
-        Inputs:
-        - n_curr: curr node
-        - n_goal: goal node
-        - ox, oy: obstacle (no reso)
-        - plot: whether doing visualization
-        """
-        # check if the start/goal configuration is legal
-        if not self.is_index_ok(n_curr, self.config["collision_check_step"]):
-            sys.exit("illegal start configuration")
-        if not self.is_index_ok(n_goal, self.config["collision_check_step"]):
-            sys.exit("illegal goal configuration")
-        
-        # get start/goal configuration from the node
-        sx = n_curr.x[-1]
-        sy = n_curr.y[-1]
-        syaw0 = n_curr.yaw[-1]
-        syawt1 = n_curr.yawt1[-1]
-        syawt2 = n_curr.yawt2[-1]
-        syawt3 = n_curr.yawt3[-1]
-        
-        gx = n_goal.x[-1]
-        gy = n_goal.y[-1]
-        gyaw0 = n_goal.yaw[-1]
-        gyawt1 = n_goal.yawt1[-1]
-        gyawt2 = n_goal.yawt2[-1]
-        gyawt3 = n_goal.yawt3[-1]
-        
-        epsilon = 1e-5
-        if np.abs(sx - gx) <= epsilon and np.abs(sy - gy) <= epsilon and np.abs(syaw0 - gyaw0) <= epsilon and \
-            np.abs(syawt1 - gyawt1) <= epsilon and np.abs(syawt2 - gyawt2) <= epsilon and np.abs(syawt3 - gyawt3) <= epsilon:
-                return 0.0
-        
-        try: 
-            path = self.analystic_expansion_three_trailer(n_curr, n_goal)
-            x = path.x
-            y = path.y
-            yaw = path.yaw
-            direction = path.directions
-            steps = [self.step_size * d for d in path.directions]
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, n_curr.yawt1[-1], n_curr.yawt2[-1], n_curr.yawt3[-1], steps)
-            
-            return self.calc_rs_path_cost_three_trailer(path, yawt1, yawt2, yawt3)
-        except:
-            return np.inf
-        
-    def heuristic_RS_three_trailer(self, n_curr, n_goal, plot=False):
-        """
-        calculate heuristic(rs path length)
-        
-        Inputs:
-        - n_curr: curr node
-        - n_goal: goal node
-        - ox, oy: obstacle (no reso)
-        - plot: whether doing visualization
-        """
-        # check if the start/goal configuration is legal
-        if not self.is_index_ok(n_curr, self.config["collision_check_step"]):
-            sys.exit("illegal start configuration")
-        if not self.is_index_ok(n_goal, self.config["collision_check_step"]):
-            sys.exit("illegal goal configuration")
-        
-        # get start/goal configuration from the node
-        sx = n_curr.x[-1]
-        sy = n_curr.y[-1]
-        syaw0 = n_curr.yaw[-1]
-        # syawt1 = n_curr.yawt1[-1]
-        # syawt2 = n_curr.yawt2[-1]
-        # syawt3 = n_curr.yawt3[-1]
-        
-        gx = n_goal.x[-1]
-        gy = n_goal.y[-1]
-        gyaw0 = n_goal.yaw[-1]
-        # gyawt1 = n_goal.yawt1[-1]
-        # gyawt2 = n_goal.yawt2[-1]
-        # gyawt3 = n_goal.yawt3[-1]
-        
-        # the same start and goal
-        epsilon = 1e-5
-        if np.abs(sx - gx) <= epsilon and np.abs(sy - gy) <= epsilon and \
-            np.abs(syaw0 - gyaw0) <= epsilon:
-            return 0.0
-        
-        path = self.calculate_rs_for_heuristic(n_curr, n_goal)
-        steps = [self.step_size * d for d in path.directions]
-        yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, n_curr.yawt1[-1], n_curr.yawt2[-1], n_curr.yawt3[-1], steps)
-        return self.calc_rs_path_cost_three_trailer(path, yawt1, yawt2, yawt3)
-    
     def heuristic_RS_three_trailer_modify(self, n_curr, n_goal, plot=False) -> float:
         """
         this is used when calculating heuristics
@@ -2831,51 +2739,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         path = self.calculate_rs_for_heuristic_modify(n_curr, n_goal)
         return self.calc_rs_path_cost_three_trailer_modify(path)
-    
-    def calc_rs_path_cost_three_trailer(self, rspath, yawt1, yawt2, yawt3):
-        """
-        this function calculate rs path cost based on rspath and yawt
-        
-        Inputs:
-        - rspath: path class
-        - yawt: the first trailer yaw
-        """
-        cost = 0.0
-
-        for lr in rspath.lengths:
-            if lr >= 0:
-                cost += abs(lr)
-            else:
-                cost += abs(lr) * self.cost["backward_cost"]
-
-        for i in range(len(rspath.lengths) - 1):
-            if rspath.lengths[i] * rspath.lengths[i + 1] < 0.0:
-                cost += self.cost["gear_cost"]
-
-        for ctype in rspath.ctypes:
-            if ctype != "S":
-                cost += self.cost["steer_angle_cost"] * abs(self.vehicle.MAX_STEER)
-
-        nctypes = len(rspath.ctypes)
-        ulist = [0.0 for _ in range(nctypes)]
-
-        for i in range(nctypes):
-            if rspath.ctypes[i] == "R":
-                ulist[i] = -self.vehicle.MAX_STEER
-            elif rspath.ctypes[i] == "WB":
-                ulist[i] = self.vehicle.MAX_STEER
-
-        for i in range(nctypes - 1):
-            cost += self.cost["steer_change_cost"] * abs(ulist[i + 1] - ulist[i])
-
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(rspath.yaw, yawt1)])
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawt1, yawt2)])
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawt2, yawt3)])
-
-        return cost
     
     def calc_rs_path_cost_three_trailer_modify(self, rspath) -> float:
         """
@@ -2922,90 +2785,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     for x, y in zip(rspath.yawt2, rspath.yawt3)])
 
         return cost
-        
-    def analystic_expansion_three_trailer(self, node, ngoal):
-        """
-        find a non_holonomic rs path for three tractor trailer system
-        """
-        sx, sy, syaw = node.x[-1], node.y[-1], node.yaw[-1]
-        gx, gy, gyaw = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1]
-        gyawt1, gyawt2, gyawt3 = ngoal.yawt1[-1], ngoal.yawt2[-1], ngoal.yawt3[-1]
-        # 1 / (minimun radius) 
-        maxc = math.tan(self.vehicle.MAX_STEER) / self.vehicle.WB
-        paths = self.calc_all_paths(sx, sy, syaw, gx, gy, gyaw, maxc, step_size=self.step_size)
-
-        if not paths:
-            return None
-
-        pq = hyastar.QueuePrior()
-        for path in paths:
-            steps = [self.step_size * d for d in path.directions]
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, node.yawt1[-1], node.yawt2[-1], node.yawt3[-1], steps)
-            pq.put(path, self.calc_rs_path_cost_three_trailer(path, yawt1, yawt2, yawt3))
-
-        while not pq.empty():
-            path = pq.get()
-            steps = [self.step_size * d for d in path.directions]
-            # this api could be some mistake
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, node.yawt1[-1], node.yawt2[-1], node.yawt3[-1], steps)
-            ind = range(0, len(path.x), self.config["collision_check_step"])
-
-            pathx = [path.x[k] for k in ind]
-            pathy = [path.y[k] for k in ind]
-            pathyaw = [path.yaw[k] for k in ind]
-            pathyawt1 = [yawt1[k] for k in ind]
-            pathyawt2 = [yawt2[k] for k in ind]
-            pathyawt3 = [yawt3[k] for k in ind]
-
-            if not self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
-                return path 
-        
-        return None
-    
-    def calculate_rs_for_heuristic(self, node, ngoal):
-        """
-        find a non_holonomic rs path for three tractor trailer system
-        """
-        sx, sy, syaw = node.x[-1], node.y[-1], node.yaw[-1]
-        gx, gy, gyaw = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1]
-        gyawt1, gyawt2, gyawt3 = ngoal.yawt1[-1], ngoal.yawt2[-1], ngoal.yawt3[-1]
-        # 1 / (minimun radius) 
-        maxc = math.tan(self.vehicle.MAX_STEER) / self.vehicle.WB
-        paths = self.calc_all_paths(sx, sy, syaw, gx, gy, gyaw, maxc, step_size=self.step_size)
-
-        if not paths:
-            return None
-
-        pq = hyastar.QueuePrior()
-        for path in paths:
-            steps = [self.step_size * d for d in path.directions]
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, node.yawt1[-1], node.yawt2[-1], node.yawt3[-1], steps)
-            pq.put(path, self.calc_rs_path_cost_three_trailer(path, yawt1, yawt2, yawt3))
-
-        count = 0
-        while not pq.empty():
-            path = pq.get()
-            if count == 0:
-                path_first = path
-            steps = [self.step_size * d for d in path.directions]
-            if self.config["plot_rs_path"]:
-                plot_rs_path(path, self.ox, self.oy)
-                plt.close()
-            # this api could be some mistake
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, node.yawt1[-1], node.yawt2[-1], node.yawt3[-1], steps)
-            ind = range(0, len(path.x), self.config["collision_check_step"])
-
-            pathx = [path.x[k] for k in ind]
-            pathy = [path.y[k] for k in ind]
-            pathyaw = [path.yaw[k] for k in ind]
-            pathyawt1 = [yawt1[k] for k in ind]
-            pathyawt2 = [yawt2[k] for k in ind]
-            pathyawt3 = [yawt3[k] for k in ind]
-            count += 1
-            if not self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
-                return path 
-        
-        return path_first
     
     def calculate_rs_for_heuristic_modify(self, node, ngoal):
         """
@@ -3047,30 +2826,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         return path_first
     
-    def calc_hybrid_cost_no_obstacle(self, n_curr, n_goal):
-        """
-        When the env contains no obstacles, we simply use rs path for the heuristic term
-        Inputs:
-        - ox/oy: when there contains no obstacles, ox/oy here is only a hint on the boundary
-        """
-        heuristic_non_holonomic = self.heuristic_RS_cost_three_trailer(n_curr, n_goal)
-
-        
-        # heuristic_holonomic_obstacles = hmap[n_curr.xind - P.minx][n_curr.yind - P.miny]
-        cost = n_curr.cost + \
-            0.1 * self.cost["h_cost"] * heuristic_non_holonomic
-
-        return cost
-    
-    
-    def calc_hybrid_cost(self, n_curr, n_goal):
-        heuristic_holonomic_obstacles = hyastar.calc_holonomic_heuristic_with_obstacle_value(n_curr, self.hmap, self.ox, self.oy, self.heuristic_reso)
-        # heuristic_holonomic_obstacles1 = hmap[n_curr.xind - P.minx][n_curr.yind - P.miny]
-        cost = n_curr.cost + \
-            self.cost["h_cost"] * heuristic_holonomic_obstacles
-
-        return cost
-    
     def calc_hybrid_cost_new(self, n_curr, n_goal):
         """
         A newly implemented function to calculate the heuristic
@@ -3080,8 +2835,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         - ox/oy: obstacle(before reso)
         """
         # currently we use path length as our heuristic
-        # heuristic_non_holonomic = self.heuristic_RS_three_trailer(n_curr, n_goal)
-        
         heuristic_non_holonomic = self.heuristic_RS_three_trailer_modify(n_curr, n_goal)
         heuristic_holonomic_obstacles = hyastar.calc_holonomic_heuristic_with_obstacle_value(n_curr, self.hmap, self.ox, self.oy, self.heuristic_reso)
         # heuristic_holonomic_obstacles = hmap[n_curr.xind - P.minx][n_curr.yind - P.miny]
@@ -3198,7 +2951,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
         return node
     
-    def is_index_ok(self, node, collision_check_step: int):
+    def is_index_ok(self, node, collision_check_step: int) -> bool:
         """
         check if the node is legal for a three trailer system
         - node: calc node (Node class)
@@ -3229,7 +2982,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
         return True
     
-    def is_collision(self, x, y, yaw, yawt1, yawt2, yawt3):
+    def is_collision(self, x, y, yaw, yawt1, yawt2, yawt3) -> bool:
         '''
         check whether there is collision
         Inputs:
@@ -3323,107 +3076,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                         return True
 
         return False
-    
-    def calc_trailer_yaw_three_trailer(self, yaw, yawt10, yawt20, yawt30, steps):
-        """
-        Inputs:
-        steps: total steps (the last one will be unused)
-        yawt10: initial yawt1
-        yawt20: initial yawt2
-        yawt30: initial yawt3
-        yaw: list of yaw
-        Outputs:
-        yawt1: list of yawt1(contains yawt10)
-        yawt2: list of yawt2
-        yawt3: list of yawt3
-        Use steps to calculate yawt1, yawt2, yawt3
-        NOTICE THAT Here the yawt1, yawt2, yawt3 also have to be regulated
-        """
-        yawt1 = [0.0 for _ in range(len(yaw))]
-        yawt2 = [0.0 for _ in range(len(yaw))]
-        yawt3 = [0.0 for _ in range(len(yaw))]
-        
-        yawt1[0] = yawt10
-        yawt2[0] = yawt20
-        yawt3[0] = yawt30
-
-        # Dynamic
-        for i in range(1, len(yaw)):
-            yawt1[i] = self.pi_2_pi(yawt1[i - 1] + steps[i - 1] / self.vehicle.RTR * math.sin(yaw[i - 1] - yawt1[i - 1]))
-            yawt2[i] = self.pi_2_pi(yawt2[i - 1] + steps[i - 1] / self.vehicle.RTR2 * math.sin(yawt1[i - 1] - yawt2[i - 1]) * math.cos(yaw[i - 1] - yawt1[i - 1]))
-            yawt3[i] = self.pi_2_pi(yawt3[i - 1] + steps[i - 1] / self.vehicle.RTR3 * math.sin(yawt2[i - 1] - yawt3[i - 1]) * math.cos(yawt1[i - 1] - yawt2[i - 1]) * math.cos(yaw[i - 1] - yawt1[i - 1]))
-
-        return yawt1, yawt2, yawt3
-    
-    def calc_rs_path_cost_three_trailer(self, rspath, yawt1, yawt2, yawt3):
-        """
-        calculate rs path cost
-        
-        Inputs:
-        - rspath: path class
-        - yawt: the first trailer yaw
-        """
-        cost = 0.0
-
-        for lr in rspath.lengths:
-            if lr >= 0:
-                cost += abs(lr)
-            else:
-                cost += abs(lr) * self.cost["backward_cost"]
-
-        for i in range(len(rspath.lengths) - 1):
-            if rspath.lengths[i] * rspath.lengths[i + 1] < 0.0:
-                cost += self.cost["gear_cost"]
-
-        for ctype in rspath.ctypes:
-            if ctype != "S":
-                cost += self.cost["steer_angle_cost"] * abs(self.vehicle.MAX_STEER)
-
-        nctypes = len(rspath.ctypes)
-        ulist = [0.0 for _ in range(nctypes)]
-
-        for i in range(nctypes):
-            if rspath.ctypes[i] == "R":
-                ulist[i] = -self.vehicle.MAX_STEER
-            elif rspath.ctypes[i] == "WB":
-                ulist[i] = self.vehicle.MAX_STEER
-
-        for i in range(nctypes - 1):
-            cost += self.cost["steer_change_cost"] * abs(ulist[i + 1] - ulist[i])
-
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(rspath.yaw, yawt1)])
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawt1, yawt2)])
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawt2, yawt3)])
-
-        return cost
-    
-    def calc_all_paths(self, sx, sy, syaw, gx, gy, gyaw, maxc, step_size):
-        # newly add control list when exploring
-        q0 = [sx, sy, syaw]
-        q1 = [gx, gy, gyaw]
-
-        paths = curves_generator.generate_path(q0, q1, maxc)
-
-        for path in paths:
-            x, y, yaw, directions, control_list = \
-                self.generate_local_course(path.L, path.lengths,
-                                    path.ctypes, maxc, step_size * maxc)
-
-            # convert global coordinate
-            path.x = [math.cos(-q0[2]) * ix + math.sin(-q0[2]) * iy + q0[0] for (ix, iy) in zip(x, y)]
-            path.y = [-math.sin(-q0[2]) * ix + math.cos(-q0[2]) * iy + q0[1] for (ix, iy) in zip(x, y)]
-            path.yaw = [self.pi_2_pi(iyaw + q0[2]) for iyaw in yaw]
-            path.directions = directions
-            path.lengths = [l / maxc for l in path.lengths]
-            path.L = path.L / maxc
-            # add rscontrollist once search the path
-            path.rscontrollist = control_list
-            
-
-        return paths
     
     def calc_all_paths_modify(self, node, ngoal, maxc, step_size):
         # Fank: 
@@ -3657,94 +3309,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         return path_x_list, path_y_list, path_yaw_list, path_yawt1_list, path_yawt2_list, path_yawt3_list, directions, info
     
-    def generate_local_course(self, L, lengths, mode, maxc, step_size):
-        """This function samples the point along the rs path
-
-        Args:
-            L : rs path length
-            lengths : a list that contains each path length
-            mode : a list of string notates the path type
-            maxc : 1 / (minimun radius)
-            step_size : scaling step_size
-
-        Returns:
-            all the waypoints every step_size, final point included
-            
-        Here you have to consider when the path length equals to 0
-        """
-        rs_control_list = []
-        point_num = int(L / step_size) + len(lengths) + 3
-
-        px = [0.0 for _ in range(point_num)]
-        py = [0.0 for _ in range(point_num)]
-        pyaw = [0.0 for _ in range(point_num)]
-        directions = [0 for _ in range(point_num)]
-        ind = 1
-
-        if lengths[0] > 0.0:
-            directions[0] = 1
-        else:
-            directions[0] = -1
-
-        if lengths[0] > 0.0:
-            d = step_size
-        # elif lengths[0] == 0.0:
-        #     d = 0
-        else:
-            d = -step_size
-
-        ll = 0.0
-        steer = 0
-        for m, l, i in zip(mode, lengths, range(len(mode))):
-            if l == 0.0:
-                continue
-            if l > 0.0:
-                d = step_size
-            else:
-                d = -step_size
-            
-            # this is where I add things   
-            if m == "S":
-                steer = 0
-            elif m == "WB":
-                steer = self.vehicle.MAX_STEER
-            else:
-                steer = -self.vehicle.MAX_STEER
-
-            ox, oy, oyaw = px[ind], py[ind], pyaw[ind]
-
-            ind -= 1
-            if i >= 1 and (lengths[i - 1] * lengths[i]) > 0:
-                pd = -d - ll
-            else:
-                pd = d - ll
-
-            while abs(pd) <= abs(l):
-                ind += 1
-                px, py, pyaw, directions = \
-                    curves_generator.interpolate(ind, pd, m, maxc, ox, oy, oyaw, px, py, pyaw, directions)
-                rs_control_list.append(np.array([d / maxc, steer]))
-                pd += d
-
-            ll = l - pd - d  # calc remain length
-
-            ind += 1
-            # first use the end of the path as a substitude 
-            px, py, pyaw, directions = \
-                curves_generator.interpolate(ind, l, m, maxc, ox, oy, oyaw, px, py, pyaw, directions)
-        # the last one needs a action to get through
-        rs_control_list.append(np.array([d / maxc, steer]))
-        if len(px) <= 1:
-            return [], [], [], []
-
-        # remove unused data
-        while len(px) >= 1 and px[-1] == 0.0 and py[-1] == 0.0:
-            px.pop()
-            py.pop()
-            pyaw.pop()
-            directions.pop()
-
-        return px, py, pyaw, directions, rs_control_list
     
     def is_same_grid(self, node1, node2):
         """
@@ -3764,55 +3328,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         if len(node1.x) == 1 and len(node2.y) == 1:
             return True
         return False
-    
-    def analystic_expantion(self, node, ngoal):
-        """
-        the returned path contains the start and the end
-        which is also admissible(TT configuration and no collision)
-        """
-        sx, sy, syaw = node.x[-1], node.y[-1], node.yaw[-1]
-        gx, gy, gyaw = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1]
-        gyawt1, gyawt2, gyawt3 = ngoal.yawt1[-1], ngoal.yawt2[-1], ngoal.yawt3[-1]
-
-        maxc = math.tan(self.vehicle.MAX_STEER) / self.vehicle.WB
-        # I add a new attribute to this function 
-        paths = self.calc_all_paths(sx, sy, syaw, gx, gy, gyaw, maxc, step_size=self.step_size)
-
-        if not paths:
-            return None
-
-        pq = hyastar.QueuePrior()
-        for path in paths:
-            steps = [self.step_size * d for d in path.directions]
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, node.yawt1[-1], node.yawt2[-1], node.yawt3[-1], steps)
-            
-            #first judge whether reaches the goal yaw of those trailers
-            if abs(self.pi_2_pi(yawt1[-1] - gyawt1)) >= self.config['goal_yaw_error']:
-                continue
-            if abs(self.pi_2_pi(yawt2[-1] - gyawt2)) >= self.config['goal_yaw_error']:
-                continue
-            if abs(self.pi_2_pi(yawt3[-1] - gyawt3)) >= self.config['goal_yaw_error']:
-                continue
-            pq.put(path, self.calc_rs_path_cost_three_trailer(path, yawt1, yawt2, yawt3))
-            # pq.put(path, calc_rs_path_cost_one_trailer(path, yawt1))
-
-        while not pq.empty():
-            path = pq.get()
-            steps = [self.step_size * d for d in path.directions]
-            yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, node.yawt1[-1], node.yawt2[-1], node.yawt3[-1], steps)
-            # check whether collision
-            ind = range(0, len(path.x), self.config["collision_check_step"])
-            pathx = [path.x[k] for k in ind]
-            pathy = [path.y[k] for k in ind]
-            pathyaw = [path.yaw[k] for k in ind]
-            pathyawt1 = [yawt1[k] for k in ind]
-            pathyawt2 = [yawt2[k] for k in ind]
-            pathyawt3 = [yawt3[k] for k in ind]
-
-            if not self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
-                return path
-
-        return None
     
     def analystic_expantion_modify(self, node, ngoal):
         """
@@ -3850,56 +3365,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
         return None
     
-    def update_node_with_analystic_expantion(self, n_curr, ngoal):
-        """
-        find a admissible rs path for three trailer system
-        
-        Inputs:
-        - n_curr: curr node
-        - ngoal: goal node
-        - P: parameters
-        Return:
-        - flag: Boolean whether we find a admissible path
-        - fpath: a node from n_curr -> ngoal(contains ngoal configuration not n_curr configuration)
-        """
-        # now the returnd path has a new attribute rscontrollist
-        # return the waypoints and control_list all in path
-        path = self.analystic_expantion(n_curr, ngoal)  # rs path: n -> ngoal
-
-        if not path:
-            return False, None, None, None
-
-        steps = [self.step_size * d for d in path.directions]
-        yawt1, yawt2, yawt3 = self.calc_trailer_yaw_three_trailer(path.yaw, n_curr.yawt1[-1], n_curr.yawt2[-1], n_curr.yawt3[-1], steps)
-        fx = path.x[1:]
-        fy = path.y[1:]
-        fyaw = path.yaw[1:]
-
-        fd = []
-        for d in path.directions[1:]:
-            if d >= 0:
-                fd.append(1.0)
-            else:
-                fd.append(-1.0)
-        fyawt1 = yawt1[1:]
-        fyawt2 = yawt2[1:]
-        fyawt3 = yawt3[1:]
-        fsteer = 0.0
-        # fd = path.directions[1:-1]
-
-        fcost = n_curr.cost + self.calc_rs_path_cost_three_trailer(path, yawt1, yawt2, yawt3)
-        # fcost = n_curr.cost + calc_rs_path_cost_one_trailer(path, yawt1)
-        fpind = self.calc_index(n_curr)
-
-        try:
-            #here n_curr.xind might be wrong
-            #but doesn't matter
-            fpath = hyastar.Node_three_trailer(self.vehicle, ngoal.xind, ngoal.yind, ngoal.yawind, ngoal.direction,
-                        fx, fy, fyaw, fyawt1, fyawt2, fyawt3, fd, fsteer, fcost, fpind)
-        except:
-            return False, None, None, None
-        # abandon the first method
-        return True, fpath, path.rscontrollist, path
     
     def update_node_with_analystic_expantion_modify(self, n_curr, ngoal):
         """
@@ -3974,7 +3439,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             path = pq.get()
             find_feasible = False
             return find_feasible, path
-        
     
     def extract_path_and_control(self, closed, ngoal, nstart, reverse=False, find_rs_path=True):
         """
@@ -3987,7 +3451,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # TODO: here you made a mistake
         step = self.config["mp_step"]
         nlist = math.ceil(step / self.config["move_step"])
-        cost = 0.0
+        # cost = 0.0
         node = ngoal
         count = 0
         
@@ -4000,7 +3464,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             ryawt2 += node.yawt2[::-1]
             ryawt3 += node.yawt3[::-1]
             direc += node.directions[::-1]
-            cost += node.cost
+            # cost += node.cost
 
             if self.is_the_start(node, nstart) and self.is_same_grid(node, nstart):
                 break
@@ -4041,7 +3505,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             plt.savefig(os.path.join(save_dir, file_name))
         plt.close()  
          
-        path = hyastar.Path_three_trailer(rx, ry, ryaw, ryawt1, ryawt2, ryawt3, direc, cost)
+        path = hyastar.Path_three_trailer(rx, ry, ryaw, ryawt1, ryawt2, ryawt3, direc)
         expand_control_list = expand_control_list[::-1]
         
         return path, expand_control_list
@@ -4058,7 +3522,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         path class
         """
         rx, ry, ryaw, ryawt1, ryawt2, ryawt3, direc = [], [], [], [], [], [], []
-        cost = 0.0
+        # cost = 0.0
         node = ngoal
         
         while True:
@@ -4070,7 +3534,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             ryawt2 += node.yawt2[::-1]
             ryawt3 += node.yawt3[::-1]
             direc += node.directions[::-1]
-            cost += node.cost
+            # cost += node.cost
 
             if self.is_same_grid(node, nstart):
                 break
@@ -4085,7 +3549,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             ryawt3 = ryawt3[::-1]
             direc = direc[::-1]
             direc[0] = direc[1]
-        path = hyastar.Path_three_trailer(rx, ry, ryaw, ryawt1, ryawt2, ryawt3, direc, cost)
+        path = hyastar.Path_three_trailer(rx, ry, ryaw, ryawt1, ryawt2, ryawt3, direc)
 
         return path
     
@@ -4191,18 +3655,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # reset qp for next using
         self.qp.reset()
         # the main change here will be the heuristic value
-        if not self.obs:
-            if self.heuristic_type == "traditional":
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle(nstart, ngoal))
-            else:
-                # here you need to change this heuristic
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_no_obstacle_critic(nstart, labels_mean, labels_std))
+        if self.heuristic_type == "traditional":
+            self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new(nstart, ngoal))
         else:
-            if self.heuristic_type == "traditional":
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new(nstart, ngoal))
-            else:
-                # here you need to change this heuristic
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new_critic(nstart, labels_mean, labels_std))
+            # here you need to change this heuristic
+            self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_new_critic(nstart, labels_mean, labels_std))
         # an indicator whether find the rs path at last
         find_rs_path = False
         # the loop number for analystic expansion
@@ -4217,6 +3674,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 self.extract_failed_path(closed_set, nstart)
                 return None, None, None
             count += 1
+            # add if the loop's too much
+            if count > self.max_iter:
+                print("waste a long time to find")
+                return None, None, None
             ind = self.qp.get()
             n_curr = open_set[ind]
             closed_set[ind] = n_curr
@@ -4235,12 +3696,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 if verbose:
                     print("final analystic expantion node number:", count)
                 break
-            # add if the loop's too much
-            if count > self.max_iter:
-                print("waste a long time to find")
-                return None, None, None
+            
             for i in range(len(steer_set)):
-                
                 node = self.calc_next_node(n_curr, ind, steer_set[i], direc_set[i])
                 if not node:
                     continue
@@ -4251,34 +3708,19 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     continue
                 if node_ind not in open_set:
                     open_set[node_ind] = node
-                    if not self.obs:
-                        if self.heuristic_type == "traditional":
-                            self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle(node, ngoal))
-                        else:
-                            self.qp.put(node_ind, self.calc_hybrid_cost_no_obstacle_critic(node, ngoal, labels_mean, labels_std))
+                    if self.heuristic_type == "traditional":
+                        self.qp.put(node_ind, self.calc_hybrid_cost_new(node, ngoal))
                     else:
-                        if self.heuristic_type == "traditional":
-                            self.qp.put(node_ind, self.calc_hybrid_cost_new(node, ngoal))
-                        else:
-                            self.qp.put(node_ind, self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std))
+                        self.qp.put(node_ind, self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std))
                 else:
                     if open_set[node_ind].cost > node.cost:
                         open_set[node_ind] = node
                         if self.qp_type == "heapdict":  
                             # if using heapdict, here you can modify the value
-                            if not self.obs:
-                                if self.heuristic_type == "traditional":
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle(node, ngoal)
-                                else:
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_no_obstacle_critic(node, ngoal, labels_mean, labels_std)   
+                            if self.heuristic_type == "traditional":
+                                self.qp.queue[node_ind] = self.calc_hybrid_cost_new(node, ngoal)
                             else:
-                                if self.heuristic_type == "traditional":
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_new(node, ngoal)
-                                else:
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std)
-            # if self.config["plot_expand_tree"]:
-            #     self.plot_expand_tree(start, goal, closed_set, open_set)
-            #     plt.close()               
+                                self.qp.queue[node_ind] = self.calc_hybrid_cost_new_critic(node, ngoal, labels_mean, labels_std)           
         if verbose:
             print("final expand node: ", len(open_set) + len(closed_set))
         
