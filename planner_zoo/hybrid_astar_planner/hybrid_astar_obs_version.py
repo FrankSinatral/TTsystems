@@ -3079,12 +3079,12 @@ class TwoTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         #        maxc - maximum culvature
         # this function adds more information for the rspath we selected
         
-        sx, sy, syaw, syawt1, syawt2, syawt3 = node.x[-1], node.y[-1], node.yaw[-1], node.yawt1[-1], node.yawt2[-1], node.yawt3[-1]
-        gx, gy, gyaw, gyawt1, gyawt2, gyawt3 = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1], ngoal.yawt1[-1], ngoal.yawt2[-1], ngoal.yawt3[-1]
+        sx, sy, syaw, syawt1, syawt2 = node.x[-1], node.y[-1], node.yaw[-1], node.yawt1[-1], node.yawt2[-1]
+        gx, gy, gyaw, gyawt1, gyawt2 = ngoal.x[-1], ngoal.y[-1], ngoal.yaw[-1], ngoal.yawt1[-1], ngoal.yawt2[-1]
         q0 = [sx, sy, syaw]
         q1 = [gx, gy, gyaw]
-        input = np.array([sx, sy, syaw, syawt1, syawt2, syawt3])
-        goal = np.array([gx, gy, gyaw, gyawt1, gyawt2, gyawt3])
+        input = np.array([sx, sy, syaw, syawt1, syawt2])
+        goal = np.array([gx, gy, gyaw, gyawt1, gyawt2])
 
         paths = curves_generator.generate_path(q0, q1, maxc)
 
