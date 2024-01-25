@@ -97,6 +97,7 @@ class TractorTrailerReachingEnv(Env):
                 "y_max": 50,
             },
             "goal_list": None,
+            "start_list": None,
             "N_steps": 10,
             "jack_knife_penalty": 0,
         }
@@ -209,6 +210,9 @@ class TractorTrailerReachingEnv(Env):
     
     def update_goal_list(self, goal_list):
         self.config["goal_list"] = goal_list
+    
+    def update_start_list(self, start_list):
+        self.config["start_list"] = start_list
         
     def sample_from_space(self, **kwargs):
         if 'seed' in kwargs:
@@ -228,12 +232,14 @@ class TractorTrailerReachingEnv(Env):
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
             np.random.seed(kwargs['seed'])
+          
         if self.config["goal_list"] is not None:
+            # random choose between a given goal list
             number_goals = len(self.config["goal_list"])
             selected_index = np.random.randint(0, number_goals)
-            self.goal = self.config["goal_list"][selected_index]
+            self.goal = tuple(self.config["goal_list"][selected_index])
         else:
-            # random sample a goal
+            # random sample a equilibrium goal
             x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
             y_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
             yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
@@ -247,8 +253,21 @@ class TractorTrailerReachingEnv(Env):
         #         yaw_state = -self.yawmax
         #     self.goal.append(yaw_state)
         
+        if self.config["start_list"] is not None:
+            # random choose between a given goal list
+            number_starts = len(self.config["start_list"])
+            selected_index = np.random.randint(0, number_starts)
+            self.start = tuple(self.config["start_list"][selected_index])
+            self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
         # shape the self.state to desired dim
-        self.controlled_vehicle.reset_equilibrium(self.sx, self.sy, self.syaw0)
+        if self.vehicle_type == "single_tractor":
+            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0)
+        elif self.vehicle_type == "one_trailer":
+            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1)
+        elif self.vehicle_type == "two_trailer":
+            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.seedyawt2)
+        else:
+            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3)
         ox, oy = self.map.sample_surface(0.1)
         if self.controlled_vehicle.is_collision(ox, oy):
             # best not meet this case

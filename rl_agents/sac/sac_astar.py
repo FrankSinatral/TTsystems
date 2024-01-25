@@ -605,7 +605,7 @@ class SAC_ASTAR:
         
         return filename
     
-    def load(self, filename):
+    def load(self, filename, whether_load_buffer=True):
         checkpoint = torch.load(filename, map_location=self.device)
         self.ac.load_state_dict(checkpoint['ac_state_dict'])
         self.alpha = checkpoint['alpha']
@@ -613,9 +613,10 @@ class SAC_ASTAR:
         self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
         
-        buffer_filename = filename.replace('.pth', '_buffer.pkl')
-        with open(buffer_filename, 'rb') as f:
-            self.replay_buffer = pickle.load(f)
+        if whether_load_buffer:
+            buffer_filename = filename.replace('.pth', '_buffer.pkl')
+            with open(buffer_filename, 'rb') as f:
+                self.replay_buffer = pickle.load(f)
         
         return filename
     

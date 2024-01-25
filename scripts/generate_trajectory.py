@@ -235,6 +235,7 @@ def generate_using_hybrid_astar_one_trailer(input, goal):
        "plot_expand_tree": True,
        "mp_step": 10,
        "range_steer_set": 20,
+       "heuristic_type": 'rl',
     }
     one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
@@ -426,7 +427,7 @@ def test_single_new():
     # goal = np.array([3,-8,np.deg2rad(-170.0),np.deg2rad(-150.0)])
     # transition_list = generate_using_hybrid_astar_one_trailer_modify(input, goal)
     input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
-    goal = np.array([10, -10, np.deg2rad(160.0), np.deg2rad(160.0)])
+    goal = np.array([20, 20, np.deg2rad(-150.0), np.deg2rad(-150.0)])
     transition_list = generate_using_hybrid_astar_one_trailer(input, goal)
     # transition_list = generate_using_hybrid_astar_single_tractor(input, goal)
     # transition_list = generate_using_hybrid_astar_one_trailer(goal)
@@ -468,7 +469,7 @@ if __name__ == "__main__":
     # parallel_execution(20)
     # t2 = time.time()
     # print("execution time:", t2 - t1)
-    transition_list = test_single()
+    transition_list = test_single_new()
     pack_transition_list = pack_transition(transition_list)
     print(1)
     # with open('./trajectory_buffer/result_0.pkl', 'rb') as f:

@@ -83,7 +83,7 @@ def main():
                 pretrained_dir=config_algo['pretrained_dir'],
                 whether_astar=config_algo['whether_astar'],
                 config=config)
-    agent.load('runs_rl/reaching-v0_sac_astar_50_20240112_220524/model_6999999.pth')
+    agent.load('runs_rl/reaching-v0_sac_astar_30_20240116_214349/model_1999999.pth', whether_load_buffer=False)
     
     # agent.ac_targ.q1()
     
@@ -92,21 +92,43 @@ def main():
     success_rate = 0.0
     jack_knife_rate = 0.0
     count = 0
-    for j in range(150, 251):
+    # start_list = []
+    # for _ in range(100):
+    #     # fix some point
+    #     epsilon = 1e-6
+    #     random_angle = np.random.uniform(-np.pi/4 + epsilon, np.pi/4 - epsilon)
+    #     start = [0.0, 0.0, 0.0, random_angle, 0.0, 0.0]
+    #     start_list.append(start)
+    # agent.test_env.unwrapped.update_start_list(start_list)  
+    goal_list = []
+    for _ in range(100):
+        epsilon = 1e-6
+        random_number_x = np.random.uniform(10, 15)
+        random_number_y = np.random.uniform(-15, 15)
+        random_angle = np.random.uniform(-np.pi + epsilon, np.pi - epsilon)
+        goal = [random_number_x, random_number_y, random_angle, random_angle, 0.0, 0.0]
+        goal_list.append(goal)
+    agent.test_env.unwrapped.update_goal_list(goal_list)
+    for j in range(0, 400):
         count += 1
+        # goal_list = 
+        # agent.test_env.unwrapped.update_goal_list(goal_list)
         o, info = agent.test_env.reset(seed=j)
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not(terminated or truncated):
             # Take deterministic actions at test time 
-            o, r, terminated, truncated, info = agent.test_env.step(agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True))
+            a = agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True)
+            o, r, terminated, truncated, info = agent.test_env.step(a)
             ep_ret += r
             ep_len += 1
         average_ep_ret += ep_ret
         average_ep_len += ep_len
         if info['is_success']:
             success_rate += 1
+            print("success:", j)
         if info['jack_knife']:
             jack_knife_rate += 1
+            print("jack_knife:", j)
         agent.test_env.unwrapped.run_simulation()
     jack_knife_rate /= count
     success_rate /= count
