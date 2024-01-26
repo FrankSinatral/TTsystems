@@ -2616,15 +2616,14 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         plt.axis("equal")
         ax = plt.gca() 
         plt.plot(self.ox, self.oy, 'sk', markersize=1)
-        self.vehicle.reset(*goal)
-        
-        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
-        self.vehicle.reset(*start)
-        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'gray')
         for key, value in open_set.items():
             self.plot_node(value, color='gray')
         for key, value in closed_set.items():
             self.plot_node(value, color='red')
+        self.vehicle.reset(*goal)
+        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        self.vehicle.reset(*start)
+        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
     
     def plot_node(self, node, color):
         xlist = node.x
