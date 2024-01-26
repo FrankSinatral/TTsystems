@@ -92,6 +92,7 @@ class SAC_ASTAR:
                  pretrained_dir=None,
                  whether_astar=True,
                  config: dict = None,
+                 device = None,
                  args = None):    
         """
         Soft Actor-Critic (SAC) with Astar as Expert Trajectory
@@ -202,7 +203,10 @@ class SAC_ASTAR:
         self.logger = EpochLogger(**logger_kwargs)
         # save your configuration in a json file
         self.logger.save_config(locals()) 
-        self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is not None:
+            self.device = device
+        else:
+            self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.seed = seed
         torch.manual_seed(seed)
         np.random.seed(seed)

@@ -1178,9 +1178,8 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                         pretrained_itr=config_algo['pretrained_itr'],
                         pretrained_dir=config_algo['pretrained_dir'],
                         whether_astar=config_algo['whether_astar'],
-                        config=config)
-            # move evaluation to cpu
-            self.agent.device = 'cpu'
+                        config=config,
+                        device='cpu')
             filename = 'runs_rl/reaching-v0_sac_astar_30_20240116_214349/model_1999999.pth'
             self.agent.load(filename, whether_load_buffer=False)
             # self.clipped_action = self.agent.test_env.unwrapped.act_limit
