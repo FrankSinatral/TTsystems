@@ -222,7 +222,7 @@ def generate_using_hybrid_astar_one_trailer(input, goal):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     
-    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
+    map_env = [(-50, -50), (50, -50), (-50, 50), (50, 50)]
     Map = tt_envs.MapBound(map_env)
     
     ox_map, oy_map = Map.sample_surface(0.1)
