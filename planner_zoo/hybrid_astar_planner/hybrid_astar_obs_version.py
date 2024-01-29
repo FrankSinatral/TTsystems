@@ -2037,6 +2037,20 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
              self.cost["h_cost"] * max(heuristic_non_holonomic, heuristic_holonomic_obstacles)
 
         return cost
+    
+    def calc_euclidean_distance(self, n_curr, n_goal):
+        n_curr_x = n_curr.x[-1]
+        n_curr_y = n_curr.y[-1]
+        n_curr_yaw = n_curr.yaw[-1]
+        n_curr_yawt1 = n_curr.yawt1[-1]
+        curr_state = np.array([n_curr_x, n_curr_y, n_curr_yaw, n_curr_yawt1, 0, 0], dtype=np.float32)
+        n_goal_x = n_goal.x[-1]
+        n_goal_y = n_goal.y[-1]
+        n_goal_yaw = n_goal.yaw[-1]
+        n_goal_yawt1 = n_goal.yawt1[-1]
+        goal_state = np.array([n_goal_x, n_goal_y, n_goal_yaw, n_goal_yawt1, 0, 0], dtype=np.float32)
+        return np.linalg.norm(curr_state - goal_state)
+        
     def calc_hybrid_cost_new_critic(self, n_curr, n_goal):
         heuristic_nn = self.heuristic_nn_one_trailer(n_curr, n_goal)
         heuristic_holonomic_obstacles = hyastar.calc_holonomic_heuristic_with_obstacle_value(n_curr, self.hmap, self.ox, self.oy, self.heuristic_reso)
@@ -2458,7 +2472,9 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     print("find path at first time")
                 closed_set[self.calc_index(nstart)] = nstart
             else:
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
+                cost_qp = self.calc_euclidean_distance(nstart, ngoal)
+                self.qp.put(self.calc_index(nstart), cost_qp)
+                # self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
         
         # Main Loop
         while True:
@@ -2536,7 +2552,9 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             closed_set[node_ind] = node
                             break
                         else:
-                            self.qp.put(node_ind, self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
+                            cost_qp = self.calc_euclidean_distance(node, ngoal)
+                            self.qp.put(node_ind, cost_qp)
+                            # self.qp.put(node_ind, self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
                 else:
                     if open_set[node_ind].cost > node.cost:
                         open_set[node_ind] = node
@@ -2579,7 +2597,9 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                         print("final expansion node number:", count)
                                     closed_set[node_ind] = node
                                 else:
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)
+                                    cost_qp = self.calc_euclidean_distance(node, ngoal)
+                                    self.qp.queue[node_ind] = cost_qp
+                                    # self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)
                        
         if verbose:
             print("final expand node: ", len(open_set) + len(closed_set) - 1)
@@ -5314,8 +5334,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             labels_std = labels_tensor.std()
             # labels_normalized = (labels_tensor - labels_mean) / labels_std
         # put the class in this file
-        nstart = hyastar.Node_three_trailer(self.vehicle, self.sxr, self.syr, self.syawr, 1, [self.sx], [self.sy], [self.pi_2_pi(self.syaw)], [self.pi_2_pi(self.syawt1)], [self.pi_2_pi(self.syawt2)], [self.pi_2_pi(self.syawt3)], [1], 0.0, 0.0, -1)
-        ngoal = hyastar.Node_three_trailer(self.vehicle, self.gxr, self.gyr, self.gyawr, 1, [self.gx], [self.gy], [self.pi_2_pi(self.gyaw)], [self.pi_2_pi(self.gyawt1)], [self.pi_2_pi(self.gyawt2)], [self.pi_2_pi(self.gyawt3)], [1], 0.0, 0.0, -1)
+        nstart = hyastar.Node_three_trailer(self.vehicle, self.sxr, self.syr, self.syawr, 1, \
+            [self.sx], [self.sy], [self.pi_2_pi(self.syaw)], [self.pi_2_pi(self.syawt1)], [self.pi_2_pi(self.syawt2)], [self.pi_2_pi(self.syawt3)], [1], 0.0, 0.0, -1)
+        ngoal = hyastar.Node_three_trailer(self.vehicle, self.gxr, self.gyr, self.gyawr, 1, \
+            [self.gx], [self.gy], [self.pi_2_pi(self.gyaw)], [self.pi_2_pi(self.gyawt1)], [self.pi_2_pi(self.gyawt2)], [self.pi_2_pi(self.gyawt3)], [1], 0.0, 0.0, -1)
         if not self.is_index_ok(nstart, self.config["collision_check_step"]):
             sys.exit("illegal start configuration")
         if not self.is_index_ok(ngoal, self.config["collision_check_step"]):
@@ -5515,6 +5537,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             # add if the loop's too much
             if count > self.max_iter:
                 print("waste a long time to find")
+                self.extract_failed_path(start, goal, closed_set, nstart)
                 return None, None, None
             
             ind = self.qp.get()
@@ -5724,7 +5747,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
             plt.show()
 
-    def extract_failed_path(self, closed, nstart):
+    def extract_failed_path(self, start, goal, closed, nstart):
         
         for value in closed.values():
             plt.plot(value.x, value.y,'.', color='grey', markersize=1)
@@ -5732,6 +5755,12 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         plt.plot(self.ox, self.oy, 'sk', markersize=1)
         # plt.legend()
         plt.axis("equal")
+        ax = plt.gca()
+        # Add plot vehicle start and goal
+        self.vehicle.reset(*goal)
+        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        self.vehicle.reset(*start)
+        self.vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
         if not os.path.exists("planner_result/failed_trajectory_three_trailer"):
             os.makedirs("planner_result/failed_trajectory_three_trailer")
             

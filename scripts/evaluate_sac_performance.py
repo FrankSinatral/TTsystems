@@ -10,6 +10,7 @@ import tractor_trailer_envs as tt_envs
 from tractor_trailer_envs import register_tt_envs
 from datetime import datetime
 import numpy as np
+import pickle
 
 # from rl_training.config import get_config
 
@@ -83,7 +84,7 @@ def main():
                 pretrained_dir=config_algo['pretrained_dir'],
                 whether_astar=config_algo['whether_astar'],
                 config=config)
-    agent.load('runs_rl/reaching-v0_sac_astar_30_20240116_214349/model_1999999.pth', whether_load_buffer=False)
+    agent.load('runs_rl/reaching-v0_sac_astar_three_trailer_60_20240122_223222/model_2499999.pth', whether_load_buffer=False)
     
     # agent.ac_targ.q1()
     
@@ -101,19 +102,21 @@ def main():
     #     start_list.append(start)
     # agent.test_env.unwrapped.update_start_list(start_list)  
     goal_list = []
-    for _ in range(100):
-        epsilon = 1e-6
-        random_number_x = np.random.uniform(10, 15)
-        random_number_y = np.random.uniform(-15, 15)
-        random_angle = np.random.uniform(-np.pi + epsilon, np.pi - epsilon)
-        goal = [random_number_x, random_number_y, random_angle, random_angle, 0.0, 0.0]
-        goal_list.append(goal)
-    agent.test_env.unwrapped.update_goal_list(goal_list)
-    for j in range(0, 400):
+    # for _ in range(100):
+    #     epsilon = 1e-6
+    #     random_number_x = np.random.uniform(10, 15)
+    #     random_number_y = np.random.uniform(-15, 15)
+    #     random_angle = np.random.uniform(-np.pi + epsilon, np.pi - epsilon)
+    #     goal = [random_number_x, random_number_y, random_angle, random_angle, 0.0, 0.0]
+    #     goal_list.append(goal)
+    # agent.test_env.unwrapped.update_goal_list(goal_list)
+    failed_o_list = []
+    for j in range(0, 1000):
         count += 1
         # goal_list = 
         # agent.test_env.unwrapped.update_goal_list(goal_list)
         o, info = agent.test_env.reset(seed=j)
+        init_o = o
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not(terminated or truncated):
             # Take deterministic actions at test time 
@@ -129,7 +132,13 @@ def main():
         if info['jack_knife']:
             jack_knife_rate += 1
             print("jack_knife:", j)
-        agent.test_env.unwrapped.run_simulation()
+        if not info['is_success']:
+            failed_o_list.append(init_o)
+        # agent.test_env.unwrapped.run_simulation()
+    if not os.path.exists("rl_training/failed"):
+        os.makedirs("rl_training/failed")
+    with open("rl_training/failed/file.pickle", 'wb') as f:
+        pickle.dump(failed_o_list, f)   
     jack_knife_rate /= count
     success_rate /= count
     print("success_rate:", success_rate)

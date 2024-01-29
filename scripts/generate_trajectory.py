@@ -11,9 +11,10 @@ import tractor_trailer_envs as tt_envs
 import matplotlib.pyplot as plt
 import time
 import pickle
-from multiprocessing import Pool
+import multiprocessing
 import logging
 import random
+from joblib import Parallel, delayed
 
 
 def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer):
@@ -304,22 +305,44 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
     oy = oy_map
     ox, oy = tt_envs.remove_duplicates(ox, oy)
     config = {
-       "plot_final_path": True,
-       "plot_rs_path": True,
-       "plot_expand_tree": True,
+       "plot_final_path": False,
+       "plot_rs_path": False,
+       "plot_expand_tree": False,
        "mp_step": 10,
        "range_steer_set": 20,
+       "controlled_vehicle_config": {
+                "w": 2.0, #[m] width of vehicle
+                "wb": 3.5, #[m] wheel base: rear to front steer
+                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                "rf": 4.5, #[m] distance from rear to vehicle front end
+                "rb": 1.0, #[m] distance from rear to vehicle back end
+                "tr": 0.5, #[m] tyre radius
+                "tw": 1.0, #[m] tyre width
+                "rtr": 2.0, #[m] rear to trailer wheel
+                "rtf": 1.0, #[m] distance from rear to trailer front end
+                "rtb": 3.0, #[m] distance from rear to trailer back end
+                "rtr2": 2.0, #[m] rear to second trailer wheel
+                "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                "rtr3": 2.0, #[m] rear to third trailer wheel
+                "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                "max_steer": 0.6, #[rad] maximum steering angle
+                "v_max": 2.0, #[m/s] maximum velocity 
+                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                "xi_max": (np.pi) / 4, # jack-knife constraint  
+            },
+       "acceptance_error": 0.5,
+       "max_iter": 20,
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
-    # try:
-    t1 = time.time()
-    path, control_list, rs_path = three_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
-    t2 = time.time()
-    print("planning time:", t2 - t1)
-    # except: 
-    #     return None
-    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
-    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+    if control_list is not None:
+        print("The action length:", len(control_list))
+        control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=config["controlled_vehicle_config"]["max_steer"])
+        transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    else:
+        return None
     return transition_list
 
 
@@ -408,14 +431,14 @@ def test_single():
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     # goal = np.array([3,-8,np.deg2rad(-170.0),np.deg2rad(-150.0)])
     # transition_list = generate_using_hybrid_astar_one_trailer_modify(input, goal)
-    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
-    # goal = np.array([10, -10, np.deg2rad(80.0),np.deg2rad(80.0), np.deg2rad(80.0),np.deg2rad(80.0)])
-    # transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
+    input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    goal = np.array([10, -10, np.deg2rad(80.0),np.deg2rad(80.0), np.deg2rad(80.0),np.deg2rad(80.0)])
+    transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
     
     
-    input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
-    goal = np.array([10, -10, np.deg2rad(160.0),np.deg2rad(160.0), np.deg2rad(160.0)])
-    transition_list = generate_using_hybrid_astar_two_trailer(input, goal)
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    # goal = np.array([10, -10, np.deg2rad(160.0),np.deg2rad(160.0), np.deg2rad(160.0)])
+    # transition_list = generate_using_hybrid_astar_two_trailer(input, goal)
     
     
     
@@ -459,19 +482,80 @@ def save_results(results, batch_size=100):
         with open(os.path.join(save_dir, f'result_{file_index}.pkl'), 'wb') as f:
             pickle.dump(batch, f)        
 
-def parallel_execution(num_processes=4, total_runs=100):
-    with Pool(num_processes) as pool:
-        results = pool.map(main_process, range(total_runs))
-    save_results(results, batch_size=100)
+# def parallel_execution(num_processes=4, total_runs=100):
+#     with Pool(num_processes) as pool:
+#         results = pool.map(main_process, range(total_runs))
+#     save_results(results, batch_size=100)
+    
+
+def process_item(failed_o):
+    t1 = time.time()
+    input = failed_o['observation']
+    goal = failed_o['desired_goal']
+    transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
+    t2 = time.time()
+    print("Planner Finish:", t2 - t1)
+    return transition_list is None
+
+def process_failed_o(failed_o):
+    input = failed_o['observation']
+    goal = failed_o['desired_goal']
+    transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
+    return transition_list is None
     
 if __name__ == "__main__":
-    # t1 = time.time()
-    # parallel_execution(20)
-    # t2 = time.time()
-    # print("execution time:", t2 - t1)
-    transition_list = test_single_new()
-    pack_transition_list = pack_transition(transition_list)
-    print(1)
-    # with open('./trajectory_buffer/result_0.pkl', 'rb') as f:
-    #     data = pickle.load(f)
-    # print(1)
+    
+    
+    # original version
+    # start_time = time.time()
+    # with open("rl_training/failed/file.pickle", 'rb') as f:
+    #     failed_o_list = pickle.load(f)
+    # print("total demo:", len(failed_o_list))
+    # failed_planning = 0
+    # for failed_o in failed_o_list:
+    #     t1 = time.time()
+    #     input = failed_o['observation']
+    #     goal = failed_o['desired_goal']
+    #     transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
+    #     if transition_list is None:
+    #         failed_planning += 1
+    #     t2 = time.time()
+    #     print("Planner Finish:", t2 - t1)
+    # end_time = time.time()
+    # print("total time cost:", end_time - start_time)
+    # print("total failed demo:", failed_planning)
+    
+    
+    # joblib version
+    start_time = time.time()
+    with open("rl_training/failed/file.pickle", 'rb') as f:
+        failed_o_list = pickle.load(f)
+    print("total demo:", len(failed_o_list))
+
+    # 使用 joblib 并行处理
+    results = Parallel(n_jobs=10)(delayed(process_item)(failed_o) for failed_o in failed_o_list)
+
+    # 计算失败的规划数量
+    failed_planning = sum(results)
+
+    end_time = time.time()
+    print("total time cost:", end_time - start_time)
+    print("total failed demo:", failed_planning)
+    
+    # # multiprocessing version
+    # start_time = time.time()
+
+    # with open("rl_training/failed/file.pickle", 'rb') as f:
+    #     failed_o_list = pickle.load(f)
+    # print("total demo:", len(failed_o_list))
+
+    # # 创建一个进程池并并行处理列表
+    # with multiprocessing.Pool() as pool:
+    #     results = pool.map(process_failed_o, failed_o_list)
+
+    # # 计算失败的规划数量
+    # failed_planning = sum(results)
+
+    # end_time = time.time()
+    # print("total time cost:", end_time - start_time)
+    # print("total failed demo:", failed_planning)

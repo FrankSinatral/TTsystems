@@ -137,6 +137,7 @@ def pack_transition_with_reward(goal, transition_list):
         next_state_index = min(i + 9, len(transition_list) - 1)
         _, _, next_state = transition_list[next_state_index]
         if i == len(transition_list) - 10:
+            #pack mamually with reward
             pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), 15, True])
         else:
             pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
@@ -265,6 +266,29 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
        "mp_step": 10,
        "range_steer_set": 20,
        "max_iter": 20,
+       "controlled_vehicle_config": {
+                "w": 2.0, #[m] width of vehicle
+                "wb": 3.5, #[m] wheel base: rear to front steer
+                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                "rf": 4.5, #[m] distance from rear to vehicle front end
+                "rb": 1.0, #[m] distance from rear to vehicle back end
+                "tr": 0.5, #[m] tyre radius
+                "tw": 1.0, #[m] tyre width
+                "rtr": 2.0, #[m] rear to trailer wheel
+                "rtf": 1.0, #[m] distance from rear to trailer front end
+                "rtb": 3.0, #[m] distance from rear to trailer back end
+                "rtr2": 2.0, #[m] rear to second trailer wheel
+                "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                "rtr3": 2.0, #[m] rear to third trailer wheel
+                "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                "max_steer": 0.6, #[rad] maximum steering angle
+                "v_max": 2.0, #[m/s] maximum velocity 
+                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                "xi_max": (np.pi) / 4, # jack-knife constraint  
+            },
+       "acceptance_error": 0.5,
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:
@@ -274,8 +298,11 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
         print("planning time:", t2 - t1)
     except: 
         return None
-    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
-    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    if control_list is not None:
+        control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
+        transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    else:
+        return None
     return transition_list 
 
 def random_generate_goal_one_trailer():
@@ -296,5 +323,8 @@ def query_hybrid_astar_one_trailer(input, goal):
 def query_hybrid_astar_three_trailer(input, goal):
     # fixed to 6-dim
     transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
-    pack_transition_list = pack_transition_with_reward(goal, transition_list)
+    if transition_list is not None:
+        pack_transition_list = pack_transition_with_reward(goal, transition_list)
+    else:
+        return None
     return pack_transition_list

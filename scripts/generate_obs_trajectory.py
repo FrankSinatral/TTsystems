@@ -129,6 +129,7 @@ def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
     
 def forward_simulation_three_trailer(input, goal, control_list, simulation_freq):
     # Pack every 10 steps to add to buffer
+    # need to be the same
     config_dict = {
         "w": 2.0, #[m] width of vehicle
         "wb": 3.5, #[m] wheel base: rear to front steer
@@ -146,7 +147,7 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
         "rtr3": 2.0, #[m] rear to third trailer wheel
         "rtf3": 1.0, #[m] distance from rear to third trailer front end
         "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-        "max_steer": 0.6, #[rad] maximum steering angle
+        "max_steer": 0.4, #[rad] maximum steering angle
         "v_max": 2.0, #[m/s] maximum velocity 
         "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
         "xi_max": (np.pi) / 4, # jack-knife constraint  
@@ -411,19 +412,90 @@ def generate_using_hybrid_astar_three_trailer_map1(test_case=1):
        "plot_final_path": True,
        "plot_rs_path": True,
        "plot_expand_tree": True,
-       "mp_step": 10,
+       "mp_step": 6,
        "range_steer_set": 20,
+       "controlled_vehicle_config": {
+                "w": 2.0, #[m] width of vehicle
+                "wb": 3.5, #[m] wheel base: rear to front steer
+                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                "rf": 4.5, #[m] distance from rear to vehicle front end
+                "rb": 1.0, #[m] distance from rear to vehicle back end
+                "tr": 0.5, #[m] tyre radius
+                "tw": 1.0, #[m] tyre width
+                "rtr": 2.0, #[m] rear to trailer wheel
+                "rtf": 1.0, #[m] distance from rear to trailer front end
+                "rtb": 3.0, #[m] distance from rear to trailer back end
+                "rtr2": 2.0, #[m] rear to second trailer wheel
+                "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                "rtr3": 2.0, #[m] rear to third trailer wheel
+                "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                "max_steer": 0.4, #[rad] maximum steering angle
+                "v_max": 2.0, #[m/s] maximum velocity 
+                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                "xi_max": (np.pi) / 4, # jack-knife constraint  
+            },
+       "acceptance_error": 0.2,
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
     t1 = time.time()
-    path, control_list, rs_path = three_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
+    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
+    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
+
+def generate_using_hybrid_astar_one_trailer_map1(test_case=1):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    if test_case == 1:
+        # obs_version case1
+        input = np.array([8.0, 19.0, np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([29.0, 6.0, np.deg2rad(-90.0), np.deg2rad(-90.0)]) 
+    elif test_case == 2:
+        # obs_version case2
+        input = np.array([23.0, 29.0, np.deg2rad(-90.0), np.deg2rad(-90.0)])
+        goal = np.array([38.0, 6.0, np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 3:
+        # obs_version case3
+        input = np.array([36.0, 8.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([23.0, 6.0, np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 4:
+        # obs_version case4
+        input = np.array([8.0, 15.0, np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([32.0, 23.0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    else:
+        # obs_version case5
+        input = np.array([8.0, 19.0, np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([30.0, 34.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+    
+    
+    ox, oy = define_map1()
+    config = {
+       "plot_final_path": True,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 10,
+       "range_steer_set": 20,
+       "heuristic_type": "rl",
+    }
+    one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = one_trailer_planner.plan_version2(input, goal, get_control_sequence=True, verbose=True)
     t2 = time.time()
     print("planning time:", t2 - t1)
     # except: 
     #     return None
     control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
-    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
     return transition_list
 
 
@@ -458,6 +530,7 @@ def generate_using_hybrid_astar_three_trailer_map2(test_case=1):
        "plot_expand_tree": True,
        "mp_step": 10,
        "range_steer_set": 20,
+    #    "heuristic_type": "rl",
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
@@ -503,6 +576,7 @@ def generate_using_hybrid_astar_one_trailer_map2(test_case=1):
        "plot_expand_tree": True,
        "mp_step": 4,
        "range_steer_set": 20,
+       "heuristic_type": "rl",
     }
     one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
@@ -659,6 +733,6 @@ def parallel_execution(num_processes=4, total_runs=100):
     
 if __name__ == "__main__":
     
-    transition_list = generate_using_hybrid_astar_one_trailer_map2(test_case=3)
+    transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=2)
     print("done")
     # pack_transition_list = pack_transition(transition_list)

@@ -12,8 +12,7 @@ import sys
 from tqdm import trange
 from tqdm import tqdm
 import pickle
-# sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
-#                 "/../../TTsystems_and_PINN/")
+
 # import core
 # Some of the nn defined here
 import rl_agents.sac.core as core
@@ -24,7 +23,8 @@ import gymnasium as gym
 from gymnasium.spaces import Box
 import random
 import tractor_trailer_envs as tt_envs
-
+import threading
+import multiprocessing
 
 
 class ReplayBuffer:
@@ -320,6 +320,10 @@ class SAC_ASTAR:
             self.alpha = alpha
         # Fank: whether using astar as our expert   
         self.whether_astar = whether_astar
+        if self.whether_astar:
+            self.lock = threading.Lock()
+            self.add_astar_number = 0
+        self.finish_episode_number = 0
         
         if pretrained == True:
             # Fank: use any pretrained model
@@ -494,10 +498,16 @@ class SAC_ASTAR:
             pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
         elif self.vehicle_type == "three_trailer":
             pack_transition_list = query_hybrid_astar_three_trailer(input, goal)
-        print("Astar Episode Length:", len(pack_transition_list))
-        for transition in pack_transition_list:
-            o, a, o2, r, d = transition
-            self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
+        if pack_transition_list is None:
+            print("Failed Finding Astar Episode")
+        else:
+            print("Astar Episode Length:", len(pack_transition_list))
+            with self.lock:
+                for transition in pack_transition_list:
+                    o, a, o2, r, d = transition
+                    self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
+                self.add_astar_number += 1
+                print("Add to Replay Buffer:", self.add_astar_number)
         
         
     def run(self):
@@ -508,10 +518,12 @@ class SAC_ASTAR:
         o, info = self.env.reset(seed=self.seed)
         episode_start_time = time.time()
         if self.whether_astar:
-            try:
-                self.add_expert_trajectory_to_buffer(o)
-            except:
-                pass
+            # try:
+            #     self.add_expert_trajectory_to_buffer(o)
+            # except:
+            #     pass
+            add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
+            add_thread.start()
         ep_ret, ep_len = 0, 0
         # o, ep_ret, ep_len = self.env.reset(), 0, 0
         if self.whether_her:
@@ -555,15 +567,19 @@ class SAC_ASTAR:
                 # self.logger.store(EpRet=ep_ret, EpLen=ep_len)
                 # Fank: next you give a brand new case
                 episode_end_time = time.time()
-                print("Finish Episode:", episode_end_time - episode_start_time)
+                print("Finish Episode time:", episode_end_time - episode_start_time)
+                self.finish_episode_number += 1
+                print("Finish Episode number:", self.finish_episode_number)
                 print("Episode Length:", ep_len)
                 o, _ = self.env.reset(seed=(self.seed + t))
                 episode_start_time = time.time()
                 if self.whether_astar:
-                    try:
-                        self.add_expert_trajectory_to_buffer(o)
-                    except:
-                        pass
+                    # try:
+                    #     self.add_expert_trajectory_to_buffer(o)
+                    # except:
+                    #     pass
+                    add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
+                    add_thread.start()
                 ep_ret, ep_len = 0, 0
                 if self.whether_her:
                     self.her_process_episode(temp_buffer)
