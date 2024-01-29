@@ -2,7 +2,7 @@ algo_name: 'sac_astar'
 seed: 50
 env_name: 'reaching-v0'
 sac_steps_per_epoch: 50000
-sac_epochs: 400
+sac_epochs: 100
 replay_size: 1000000
 gamma: 0.95
 polyak: 0.95
@@ -12,7 +12,7 @@ batch_size: 1024
 start_steps: 1000
 update_after: 1000
 update_every: 2000
-save_freq: 5
+save_freq: 1
 num_test_episodes: 100
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
@@ -21,7 +21,7 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: False
+whether_astar: True
 
 pretrained: False
 pretrained_itr: 2499999

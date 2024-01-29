@@ -489,13 +489,11 @@ def save_results(results, batch_size=100):
     
 
 def process_item(failed_o):
-    t1 = time.time()
     input = failed_o['observation']
     goal = failed_o['desired_goal']
     transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
-    t2 = time.time()
-    print("Planner Finish:", t2 - t1)
-    return transition_list is None
+    return transition_list  # 返回每个条目的 transition_list
+
 
 def process_failed_o(failed_o):
     input = failed_o['observation']
@@ -528,19 +526,26 @@ if __name__ == "__main__":
     
     # joblib version
     start_time = time.time()
+
     with open("rl_training/failed/file.pickle", 'rb') as f:
         failed_o_list = pickle.load(f)
     print("total demo:", len(failed_o_list))
 
     # 使用 joblib 并行处理
-    results = Parallel(n_jobs=10)(delayed(process_item)(failed_o) for failed_o in failed_o_list)
+    results = Parallel(n_jobs=-1)(delayed(process_item)(failed_o) for failed_o in failed_o_list)
 
-    # 计算失败的规划数量
-    failed_planning = sum(results)
+    # 组合所有的 transition_list
+    all_transitions = []
+    for result in results:
+        if result is not None:
+            all_transitions.extend(result)
 
     end_time = time.time()
     print("total time cost:", end_time - start_time)
-    print("total failed demo:", failed_planning)
+    print("total failed demo:", len([res for res in results if res is None]))
+    print("Total transitions:", len(all_transitions))
+    print(1)
+
     
     # # multiprocessing version
     # start_time = time.time()

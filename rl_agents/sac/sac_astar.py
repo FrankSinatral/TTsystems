@@ -25,7 +25,16 @@ import random
 import tractor_trailer_envs as tt_envs
 import threading
 import multiprocessing
+from joblib import Parallel, delayed
 
+def find_expert_trajectory(o, vehicle_type):
+        goal = o["desired_goal"]
+        input = o["observation"]
+        if vehicle_type == "one_trailer":
+            pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
+        elif vehicle_type == "three_trailer":
+            pack_transition_list = query_hybrid_astar_three_trailer(input, goal)
+        return pack_transition_list
 
 class ReplayBuffer:
     """
@@ -321,7 +330,7 @@ class SAC_ASTAR:
         # Fank: whether using astar as our expert   
         self.whether_astar = whether_astar
         if self.whether_astar:
-            self.lock = threading.Lock()
+            # self.lock = threading.Lock()
             self.add_astar_number = 0
         self.finish_episode_number = 0
         
@@ -499,7 +508,8 @@ class SAC_ASTAR:
         elif self.vehicle_type == "three_trailer":
             pack_transition_list = query_hybrid_astar_three_trailer(input, goal)
         if pack_transition_list is None:
-            print("Failed Finding Astar Episode")
+            # print("Failed Finding Astar Episode")
+            pass
         else:
             print("Astar Episode Length:", len(pack_transition_list))
             with self.lock:
@@ -508,6 +518,16 @@ class SAC_ASTAR:
                     self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
                 self.add_astar_number += 1
                 print("Add to Replay Buffer:", self.add_astar_number)
+    def add_results_to_buffer(self, results):
+        for pack_transition_list in results:
+            if pack_transition_list is None:
+                pass
+            else:
+                for transition in pack_transition_list:
+                        o, a, o2, r, d = transition
+                        self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
+            self.add_astar_number += 1
+        print("Add to Replay Buffer:", self.add_astar_number)
         
         
     def run(self):
@@ -515,15 +535,17 @@ class SAC_ASTAR:
         total_steps = self.steps_per_epoch * self.epochs
         # ep_ret: sum over all the rewards of an episode
         # ep_len: calculate the timesteps of an episode
+        # reset this value every time we use run
+        self.finish_episode_number = 0
         o, info = self.env.reset(seed=self.seed)
         episode_start_time = time.time()
         if self.whether_astar:
-            # try:
-            #     self.add_expert_trajectory_to_buffer(o)
-            # except:
-            #     pass
-            add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
-            add_thread.start()
+            self.add_astar_number = 0
+            # to Fasten the code, we first sample the all the start list
+            encounter_start_list = []
+            encounter_start_list.append(o)
+            # add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
+            # add_thread.start()
         ep_ret, ep_len = 0, 0
         # o, ep_ret, ep_len = self.env.reset(), 0, 0
         if self.whether_her:
@@ -571,15 +593,24 @@ class SAC_ASTAR:
                 self.finish_episode_number += 1
                 print("Finish Episode number:", self.finish_episode_number)
                 print("Episode Length:", ep_len)
-                o, _ = self.env.reset(seed=(self.seed + t))
-                episode_start_time = time.time()
                 if self.whether_astar:
-                    # try:
-                    #     self.add_expert_trajectory_to_buffer(o)
-                    # except:
-                    #     pass
-                    add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
-                    add_thread.start()
+                    if self.finish_episode_number % 100 == 0:
+                        print("Start Collecting Buffer from Astar")
+                        astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
+                        # Clear the result
+                        encounter_start_list = []
+                        self.add_results_to_buffer(astar_results)
+                o, _ = self.env.reset(seed=(self.seed + t))
+                if self.whether_astar:
+                    encounter_start_list.append(o)
+                episode_start_time = time.time()
+                # if self.whether_astar:
+                #     # try:
+                #     #     self.add_expert_trajectory_to_buffer(o)
+                #     # except:
+                #     #     pass
+                #     add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
+                #     add_thread.start()
                 ep_ret, ep_len = 0, 0
                 if self.whether_her:
                     self.her_process_episode(temp_buffer)
@@ -588,6 +619,7 @@ class SAC_ASTAR:
             # Update handling
             if t >= self.update_after and t % self.update_every == 0:
                 update_start_time = time.time()
+                print("Doing sac update")
                 for j in range(self.update_every):
                     batch = self.replay_buffer.sample_batch(self.batch_size)
                     self.update(data=batch, global_step=t)

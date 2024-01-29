@@ -210,9 +210,15 @@ class TractorTrailerReachingEnv(Env):
     
     def update_goal_list(self, goal_list):
         self.config["goal_list"] = goal_list
+        
+    def clear_goal_list(self):
+        self.config["goal_list"] = None
     
     def update_start_list(self, start_list):
         self.config["start_list"] = start_list
+        
+    def clear_start_list(self):
+        self.config["start_list"] = None
         
     def sample_from_space(self, **kwargs):
         if 'seed' in kwargs:
