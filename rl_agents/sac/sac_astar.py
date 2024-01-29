@@ -11,6 +11,7 @@ import os.path as osp
 import sys
 from tqdm import trange
 from tqdm import tqdm
+import pickle
 # sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
 #                 "/../../TTsystems_and_PINN/")
 # import core
@@ -91,6 +92,7 @@ class SAC_ASTAR:
                  pretrained_dir=None,
                  whether_astar=True,
                  config: dict = None,
+                 device = None,
                  args = None):    
         """
         Soft Actor-Critic (SAC) with Astar as Expert Trajectory
@@ -201,7 +203,10 @@ class SAC_ASTAR:
         self.logger = EpochLogger(**logger_kwargs)
         # save your configuration in a json file
         self.logger.save_config(locals()) 
-        self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device is not None:
+            self.device = device
+        else:
+            self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.seed = seed
         torch.manual_seed(seed)
         np.random.seed(seed)
@@ -596,15 +601,27 @@ class SAC_ASTAR:
                  'alpha_optimizer': self.alpha_optimizer.state_dict(),
                  }
         torch.save(state, filename)
+        
+        # add save buffer
+        buffer_filename = filename.replace('.pth', '_buffer.pkl')
+        with open(buffer_filename, 'wb') as f:
+            pickle.dump(self.replay_buffer, f)
+        
         return filename
     
-    def load(self, filename):
+    def load(self, filename, whether_load_buffer=True):
         checkpoint = torch.load(filename, map_location=self.device)
         self.ac.load_state_dict(checkpoint['ac_state_dict'])
         self.alpha = checkpoint['alpha']
         self.pi_optimizer.load_state_dict(checkpoint['pi_optimizer'])
         self.q_optimizer.load_state_dict(checkpoint['q_optimizer'])
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer'])
+        
+        if whether_load_buffer:
+            buffer_filename = filename.replace('.pth', '_buffer.pkl')
+            with open(buffer_filename, 'rb') as f:
+                self.replay_buffer = pickle.load(f)
+        
         return filename
     
     def her_process_episode(self, episode_data, goal_selection_strategy="future", k=4):
@@ -684,18 +701,3 @@ class SAC_ASTAR:
         if crashed:
             reward += collision_reward
         return reward
-    
-    
-    # def load_pretrained_model(self, fpath, itr):
-    #     if itr == 'last':
-    #         pytsave_path = osp.join(fpath, 'pyt_save')
-    #         saves = [int(x.split('.')[0][6:]) for x in os.listdir(pytsave_path) if len(x)>9 and 'model' in x]
-    #         itr = '%d'%max(saves) if len(saves) > 0 else ''
-    #     else:
-    #         assert isinstance(itr, int), \
-    #             "Bad value provided for itr (needs to be int or 'last')."
-    #         itr = '%d'%itr
-    #     fname = osp.join(fpath, 'pyt_save', 'model_'+itr+'.pt')
-    #     print('\n\nLoading Pretrained Model from %s.\n\n'%fname)
-        
-    #     return torch.load(fname)

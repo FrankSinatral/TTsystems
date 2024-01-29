@@ -25,6 +25,63 @@ def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer)
     
     return new_control_list
 
+def define_map1():
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    map_env = [(0, 40), (40, 0), (40, 40), (0, 0)]
+    Map = tt_envs.MapBound(map_env)
+    
+    ox_map, oy_map = Map.sample_surface(0.1)
+    Obstacle1 = tt_envs.QuadrilateralObstacle([(0, 25), (0, 40), (20, 25), (20, 40)])
+    Obstacle2 = tt_envs.QuadrilateralObstacle([(0, 12), (20, 12), (20, 0), (0, 0)])
+    Obstacle3 = tt_envs.QuadrilateralObstacle([(26, 0), (27, 0), (27, 12), (26, 12)])
+    Obstacle4 = tt_envs.QuadrilateralObstacle([(32, 0), (33, 0), (32, 12), (33, 12)])
+    ox1, oy1 = Obstacle1.sample_surface(0.1)
+    ox2, oy2 = Obstacle2.sample_surface(0.1)
+    ox3, oy3 = Obstacle3.sample_surface(0.1)
+    ox4, oy4 = Obstacle4.sample_surface(0.1)
+    ox = ox_map + ox1 + ox2 + ox3 + ox4
+    oy = oy_map + oy1 + oy2 + oy3 + oy4
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    return ox, oy
+
+
+def define_map2():
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    map_env = [(29, 0), (0, 36), (29, 36), (0, 0)]
+    Map = tt_envs.MapBound(map_env)
+    
+    ox_map, oy_map = Map.sample_surface(0.1)
+    Obstacle1 = tt_envs.QuadrilateralObstacle([(6, 36), (17, 36), (6, 30), (17, 30)])
+    Obstacle2 = tt_envs.QuadrilateralObstacle([(19, 36), (21, 36), (19, 30), (21, 30)])
+    Obstacle3 = tt_envs.QuadrilateralObstacle([(27, 36), (29, 36), (27, 24), (29, 24)])
+    Obstacle4 = tt_envs.QuadrilateralObstacle([(6, 18), (8, 18), (6, 24), (8, 24)])
+    Obstacle5 = tt_envs.QuadrilateralObstacle([(11, 18), (21, 18), (11, 24), (21, 24)])
+    Obstacle6 = tt_envs.QuadrilateralObstacle([(6, 12), (17, 12), (6, 18), (17, 18)])
+    Obstacle7 = tt_envs.QuadrilateralObstacle([(19, 12), (21, 12), (19, 18), (21, 18)])
+    Obstacle8 = tt_envs.QuadrilateralObstacle([(27, 0), (29, 0), (27, 18), (29, 18)])
+    Obstacle9 = tt_envs.QuadrilateralObstacle([(6, 0), (11, 0), (6, 6), (11, 6)])
+    Obstacle10 = tt_envs.QuadrilateralObstacle([(13, 0), (21, 0), (13, 6), (21, 6)])
+    ox1, oy1 = Obstacle1.sample_surface(0.1)
+    ox2, oy2 = Obstacle2.sample_surface(0.1)
+    ox3, oy3 = Obstacle3.sample_surface(0.1)
+    ox4, oy4 = Obstacle4.sample_surface(0.1)
+    ox5, oy5 = Obstacle5.sample_surface(0.1)
+    ox6, oy6 = Obstacle6.sample_surface(0.1)
+    ox7, oy7 = Obstacle7.sample_surface(0.1)
+    ox8, oy8 = Obstacle8.sample_surface(0.1)
+    ox9, oy9 = Obstacle9.sample_surface(0.1)
+    ox10, oy10 = Obstacle10.sample_surface(0.1)
+    ox = ox_map + ox1 + ox2 + ox3 + ox4 + ox5 + ox6 + ox7 + ox8 + ox9 + ox10
+    oy = oy_map + oy1 + oy2 + oy3 + oy4 + oy5 + oy6 + oy7 + oy8 + oy9 + oy10
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    return ox, oy
+    
+    
+    
 def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
     # Pack every 10 steps to add to buffer
     config_dict = {
@@ -222,7 +279,7 @@ def generate_using_hybrid_astar_one_trailer(input, goal):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     
-    map_env = [(-50, -50), (50, -50), (-50, 50), (50, 50)]
+    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
     Map = tt_envs.MapBound(map_env)
     
     ox_map, oy_map = Map.sample_surface(0.1)
@@ -322,6 +379,142 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
     transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
     return transition_list
 
+
+def generate_using_hybrid_astar_three_trailer_map1(test_case=1):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    if test_case == 1:
+        # obs_version case1
+        input = np.array([8.0, 19.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([29.0, 6.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)]) 
+    elif test_case == 2:
+        # obs_version case2
+        input = np.array([23.0, 29.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)])
+        goal = np.array([38.0, 6.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 3:
+        # obs_version case3
+        input = np.array([36.0, 8.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([23.0, 6.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 4:
+        # obs_version case4
+        input = np.array([8.0, 15.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([32.0, 23.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    else:
+        # obs_version case5
+        input = np.array([8.0, 19.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([30.0, 34.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+    
+    
+    ox, oy = define_map1()
+    config = {
+       "plot_final_path": True,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 10,
+       "range_steer_set": 20,
+    }
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = three_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
+
+def generate_using_hybrid_astar_three_trailer_map2(test_case=1):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    if test_case == 1:
+        # obs_version case7
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([19.0, 26.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    elif test_case == 2:
+        # obs_version case8
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([25.0, 29.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+    elif test_case == 3:
+        # obs_version case9
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([25.0, 15.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+    elif test_case == 4:
+        # obs_version case10
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([24.0, 11.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 5:
+        # obs_version case11
+        input = np.array([2.0, 8.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([19.0, 10.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    ox, oy = define_map2()
+    config = {
+       "plot_final_path": True,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 10,
+       "range_steer_set": 20,
+    }
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = three_trailer_planner.plan(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
+
+def generate_using_hybrid_astar_one_trailer_map2(test_case=1):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    if test_case == 1:
+        # obs_version case7
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([19.0, 26.0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    elif test_case == 2:
+        # obs_version case8
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([25.0, 29.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+    elif test_case == 3:
+        # obs_version case9
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([25.0, 15.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+    elif test_case == 4:
+        # obs_version case10
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([24.0, 11.0, np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 5:
+        # obs_version case11
+        input = np.array([2.0, 8.0, np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([19.0, 8.0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    ox, oy = define_map2()
+    config = {
+       "plot_final_path": True,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 4,
+       "range_steer_set": 20,
+    }
+    one_trailer_planner = alg_obs.OneTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = one_trailer_planner.plan_version2(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
 
 def generate_using_hybrid_astar_two_trailer(input, goal):
    
@@ -465,13 +658,7 @@ def parallel_execution(num_processes=4, total_runs=100):
     save_results(results, batch_size=100)
     
 if __name__ == "__main__":
-    # t1 = time.time()
-    # parallel_execution(20)
-    # t2 = time.time()
-    # print("execution time:", t2 - t1)
-    transition_list = test_single_new()
-    pack_transition_list = pack_transition(transition_list)
-    print(1)
-    # with open('./trajectory_buffer/result_0.pkl', 'rb') as f:
-    #     data = pickle.load(f)
-    # print(1)
+    
+    transition_list = generate_using_hybrid_astar_one_trailer_map2(test_case=3)
+    print("done")
+    # pack_transition_list = pack_transition(transition_list)
