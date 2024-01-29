@@ -23,6 +23,6 @@ whether_her: False
 use_auto: True
 whether_astar: True
 
-pretrained: False
-pretrained_itr: 1999999
-pretrained_dir: 'runs_rl/reaching-v0_sac_astar_30_20240116_214349/'
+pretrained: True
+pretrained_itr: 999999
+pretrained_dir: 'runs_rl/reaching-v0_sac_astar_three_trailer_60_20240122_160223/'
