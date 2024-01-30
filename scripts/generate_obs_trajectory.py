@@ -731,8 +731,116 @@ def parallel_execution(num_processes=4, total_runs=100):
         results = pool.map(main_process, range(total_runs))
     save_results(results, batch_size=100)
     
+def define_large_map():
+    map_size = 120
+    tunel_width = 10
+    map_env = [(0, map_size), (map_size, 0), (map_size, map_size), (0, 0)]
+    Map = tt_envs.MapBound(map_env)
+
+    ox, oy = Map.sample_surface(0.1)
+
+    # 随机生成20个障碍物
+    obstacles = []
+    
+
+    obstacles = [
+        tt_envs.QuadrilateralObstacle([(tunel_width, tunel_width), (tunel_width, map_size - tunel_width), (map_size / 2, tunel_width), (map_size / 2 , map_size - tunel_width)]),
+        tt_envs.QuadrilateralObstacle([(map_size / 2 + tunel_width, map_size - tunel_width), (map_size / 2 + tunel_width, tunel_width), (map_size - tunel_width, tunel_width), (map_size - tunel_width, map_size - tunel_width)]),
+    ]
+
+    # 将所有障碍物的表面点加入到坐标列表中
+    for obstacle in obstacles:
+        ox_obs, oy_obs = obstacle.sample_surface(0.1)
+        ox += ox_obs
+        oy += oy_obs
+
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    return ox, oy
+
+def define_large_map_with_20_obstacles():
+    map_size = 400
+    map_env = [(0, map_size), (map_size, 0), (map_size, map_size), (0, 0)]
+    Map = tt_envs.MapBound(map_env)
+
+    ox, oy = Map.sample_surface(0.1)
+
+    # 随机生成20个障碍物
+    obstacles = []
+    for _ in range(20):
+        # 随机确定障碍物的左下角和右上角
+        x1, y1 = random.randint(0, map_size - 50), random.randint(0, map_size - 50)
+        x2, y2 = x1 + random.randint(10, 50), y1 + random.randint(10, 50)
+
+        # 确保障碍物在地图内
+        x2, y2 = min(x2, map_size), min(y2, map_size)
+
+        obstacle = tt_envs.QuadrilateralObstacle([(x1, y1), (x1, y2), (x2, y2), (x2, y1)])
+        obstacles.append(obstacle)
+
+    # 将所有障碍物的表面点加入到坐标列表中
+    for obstacle in obstacles:
+        ox_obs, oy_obs = obstacle.sample_surface(0.1)
+        ox += ox_obs
+        oy += oy_obs
+
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    return ox, oy
+
+def generate_using_hybrid_astar_three_trailer_tunel_map(test_case=1):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    if test_case == 1:
+        # obs_version case7
+        input = np.array([58.0, 5.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([89.0, 115.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    elif test_case == 2:
+        # obs_version case8
+        input = np.array([58.0, 5.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([50.0, 115.0, np.deg2rad(180.0), np.deg2rad(180.0), np.deg2rad(180.0), np.deg2rad(180.0)])
+    elif test_case == 3:
+        # obs_version case9
+        input = np.array([58.0, 5.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([89.0, 115.0, np.deg2rad(180.0), np.deg2rad(180.0), np.deg2rad(180.0), np.deg2rad(180.0)])
+    elif test_case == 4:
+        # obs_version case10
+        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([24.0, 11.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)])
+    elif test_case == 5:
+        # obs_version case11
+        input = np.array([2.0, 8.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([19.0, 10.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    ox, oy = define_large_map()
+    config = {
+       "plot_final_path": True,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 10,
+       "range_steer_set": 20,
+    #    "heuristic_type": "rl",
+    }
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6)
+    transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    return transition_list
+
+
+    
 if __name__ == "__main__":
     
-    transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=2)
-    print("done")
+    # ox, oy = define_large_map()
+    # planners.plot_map(ox, oy)
+    # plt.savefig("large_map.png")
+    transition_list = generate_using_hybrid_astar_three_trailer_tunel_map(test_case=3)
+    
+    
+    # transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=2)
+    # print("done")
     # pack_transition_list = pack_transition(transition_list)

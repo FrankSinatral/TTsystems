@@ -3,6 +3,7 @@ from planner_zoo.hybrid_astar_planner.hybrid_astar_obs_version import (
     OneTractorTrailerHybridAstarPlanner,
     ThreeTractorTrailerHybridAstarPlanner,
     action_recover_from_planner,
+    plot_map,
 )
 from planner_zoo.rrt_planner.rrt_obs_version import (
     RRTPlanner

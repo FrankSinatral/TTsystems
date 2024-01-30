@@ -30,6 +30,10 @@ def plot_rs_path(rspath, ox, oy):
     ylist = rspath.y
     plt.plot(xlist, ylist, 'r')
     
+def plot_map(ox, oy):
+    plt.axis("equal")
+    plt.plot(ox, oy, 'sk', markersize=1)
+    
 def gym_reaching_tt_env_fn(config: dict): 
     return gym.make("tt-reaching-v0", config=config)
     
