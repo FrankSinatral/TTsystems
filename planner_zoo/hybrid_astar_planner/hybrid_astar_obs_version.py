@@ -2156,9 +2156,10 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         pathy = [rl_path.y[k] for k in ind]
         pathyaw = [rl_path.yaw[k] for k in ind]
         pathyawt1 = [rl_path.yawt1[k] for k in ind]
-        if not self.is_collision(pathx, pathy, pathyaw, pathyawt1):
+        if self.is_collision(pathx, pathy, pathyaw, pathyawt1):
             rl_path.info["crashed"] = True
             rl_path.info["is_success"] = False
+            find_feasible = False
         cost = self.calc_rl_path_cost_one_trailer(rl_path)
         rl_path.rlcost = cost
         if find_feasible:
