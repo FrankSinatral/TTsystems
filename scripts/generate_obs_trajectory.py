@@ -412,7 +412,7 @@ def generate_using_hybrid_astar_three_trailer_map1(test_case=1):
        "plot_final_path": True,
        "plot_rs_path": True,
        "plot_expand_tree": True,
-       "mp_step": 6,
+       "mp_step": 10,
        "range_steer_set": 20,
        "controlled_vehicle_config": {
                 "w": 2.0, #[m] width of vehicle
@@ -437,6 +437,7 @@ def generate_using_hybrid_astar_three_trailer_map1(test_case=1):
                 "xi_max": (np.pi) / 4, # jack-knife constraint  
             },
        "acceptance_error": 0.2,
+       "heuristic_type": "rl",
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
@@ -838,9 +839,9 @@ if __name__ == "__main__":
     # ox, oy = define_large_map()
     # planners.plot_map(ox, oy)
     # plt.savefig("large_map.png")
-    transition_list = generate_using_hybrid_astar_three_trailer_tunel_map(test_case=3)
+    # transition_list = generate_using_hybrid_astar_three_trailer_tunel_map(test_case=3)
     
     
-    # transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=2)
+    transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=3)
     # print("done")
     # pack_transition_list = pack_transition(transition_list)
