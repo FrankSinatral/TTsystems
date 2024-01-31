@@ -2615,8 +2615,7 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                 else:
                                     cost_qp = self.calc_euclidean_distance(node, ngoal)
                                     self.qp.queue[node_ind] = cost_qp
-                                    # self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)
-                       
+                                    # self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)          
         if verbose:
             print("final expand node: ", len(open_set) + len(closed_set) - 1)
         
@@ -5901,6 +5900,12 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     # cost_qp = self.calc_euclidean_distance(node, ngoal)
                                     # self.qp.queue[node_ind] = cost_qp
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)          
+            if self.config["plot_expand_tree"] and count % 20 == 0:
+                self.plot_expand_tree(start, goal, closed_set, open_set)
+                plt.savefig("runs_rl/savefig.png")
+                plt.close() 
+        
+        
         if verbose:
             print("final expand node: ", len(open_set) + len(closed_set) - 1)
         
