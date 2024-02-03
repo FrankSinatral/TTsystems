@@ -84,7 +84,7 @@ def main():
                 pretrained_dir=config_algo['pretrained_dir'],
                 whether_astar=config_algo['whether_astar'],
                 config=config)
-    agent.load('runs_rl/reaching-v0_sac_astar_three_trailer_60_20240122_223222/model_2499999.pth', whether_load_buffer=False)
+    agent.load('runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_4949999.pth', whether_load_buffer=False)
     
     # agent.ac_targ.q1()
     
@@ -110,7 +110,8 @@ def main():
     #     goal = [random_number_x, random_number_y, random_angle, random_angle, 0.0, 0.0]
     #     goal_list.append(goal)
     # agent.test_env.unwrapped.update_goal_list(goal_list)
-    failed_o_list = []
+    # failed_o_list = []
+    result_list = []
     for j in range(0, 1000):
         count += 1
         # goal_list = 
@@ -132,17 +133,23 @@ def main():
         if info['jack_knife']:
             jack_knife_rate += 1
             print("jack_knife:", j)
-        if not info['is_success']:
-            failed_o_list.append(init_o)
+        # if not info['is_success']:
+        #     failed_o_list.append(init_o)
+        single_dict = {
+            "state_list": agent.test_env.unwrapped.state_list,
+            "action_list": agent.test_env.unwrapped.action_list,
+            "info": info,
+        }
+        result_list.append(single_dict)
         # agent.test_env.unwrapped.run_simulation()
-    if not os.path.exists("rl_training/failed"):
-        os.makedirs("rl_training/failed")
-    with open("rl_training/failed/file.pickle", 'wb') as f:
-        pickle.dump(failed_o_list, f)   
+    if not os.path.exists("rl_training/datas"):
+        os.makedirs("rl_training/datas")
+    with open("rl_training/datas/file.pickle", 'wb') as f:
+        pickle.dump(result_list, f)   
     jack_knife_rate /= count
     success_rate /= count
     print("success_rate:", success_rate)
-    print("jack_knife_rate:", jack_knife_rate)
+    print("jack_knife_rate:", jack_knife_rate)    
 
 if __name__ == "__main__":
     main()

@@ -431,7 +431,7 @@ def generate_using_hybrid_astar_three_trailer_map1(test_case=1):
                 "rtr3": 2.0, #[m] rear to third trailer wheel
                 "rtf3": 1.0, #[m] distance from rear to third trailer front end
                 "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-                "max_steer": 0.4, #[rad] maximum steering angle
+                "max_steer": 0.6, #[rad] maximum steering angle
                 "v_max": 2.0, #[m/s] maximum velocity 
                 "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
                 "xi_max": (np.pi) / 4, # jack-knife constraint  
@@ -804,12 +804,17 @@ def generate_using_hybrid_astar_three_trailer_tunel_map(test_case=1):
         goal = np.array([89.0, 115.0, np.deg2rad(180.0), np.deg2rad(180.0), np.deg2rad(180.0), np.deg2rad(180.0)])
     elif test_case == 4:
         # obs_version case10
-        input = np.array([3.0, 10.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
-        goal = np.array([24.0, 11.0, np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0), np.deg2rad(-90.0)])
+        input = np.array([55.0, 5.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        goal = np.array([64.0, 13.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
     elif test_case == 5:
         # obs_version case11
-        input = np.array([2.0, 8.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
-        goal = np.array([19.0, 10.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
+        input = np.array([64.0, 13.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([64.0, 23.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        
+    elif test_case == 6:
+        # obs_version case11
+        input = np.array([66.0, 13.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
+        goal = np.array([64.0, 23.0, np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0), np.deg2rad(90.0)])
     
     ox, oy = define_large_map()
     config = {
@@ -818,7 +823,7 @@ def generate_using_hybrid_astar_three_trailer_tunel_map(test_case=1):
        "plot_expand_tree": True,
        "mp_step": 10,
        "range_steer_set": 20,
-    #    "heuristic_type": "rl",
+       "heuristic_type": "rl",
     }
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
@@ -839,9 +844,9 @@ if __name__ == "__main__":
     # ox, oy = define_large_map()
     # planners.plot_map(ox, oy)
     # plt.savefig("large_map.png")
-    # transition_list = generate_using_hybrid_astar_three_trailer_tunel_map(test_case=3)
+    # transition_list = generate_using_hybrid_astar_three_trailer_tunel_map(test_case=6)
     
     
-    transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=3)
+    transition_list = generate_using_hybrid_astar_three_trailer_map1(test_case=4)
     # print("done")
     # pack_transition_list = pack_transition(transition_list)

@@ -28,7 +28,7 @@ def plot_rs_path(rspath, ox, oy):
     plt.plot(ox, oy, 'sk', markersize=1)
     xlist = rspath.x
     ylist = rspath.y
-    plt.plot(xlist, ylist, 'r')
+    plt.plot(xlist, ylist, 'b')
     
 def plot_map(ox, oy):
     plt.axis("equal")
@@ -69,7 +69,7 @@ def action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_s
     
     return new_control_list
 
-def action_recover_to_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.4):
+def action_recover_to_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6):
     # change action from rl to planner
     # note here max_steer is slightly different run in rl
     new_control_list = []
@@ -4332,6 +4332,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "plot_rs_path": True,
             "plot_expand_tree": True,
             "plot_final_path": True,
+            "plot_failed_path": False,
             "range_steer_set": 8, #need to set the same as n_steer
             "acceptance_error": 0.5,
         }
@@ -5780,13 +5781,15 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 break
             if not open_set or self.qp.empty():
                 print("failed finding a feasible path")
-                self.extract_failed_path(closed_set, nstart)
+                if self.config["plot_failed_path"]:
+                    self.extract_failed_path(closed_set, nstart)
                 return None, None, None
             count += 1
             # add if the loop's too much
             if count > self.max_iter:
                 print("waste a long time to find")
-                self.extract_failed_path(start, goal, closed_set, nstart)
+                if self.config["plot_failed_path"]:
+                    self.extract_failed_path(start, goal, closed_set, nstart)
                 return None, None, None
             
             ind = self.qp.get()
@@ -5900,10 +5903,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     # cost_qp = self.calc_euclidean_distance(node, ngoal)
                                     # self.qp.queue[node_ind] = cost_qp
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)          
-            if self.config["plot_expand_tree"] and count % 20 == 0:
-                self.plot_expand_tree(start, goal, closed_set, open_set)
-                plt.savefig("runs_rl/savefig.png")
-                plt.close() 
+            # if self.config["plot_expand_tree"] and count % 1 == 0:
+            #     self.plot_expand_tree(start, goal, closed_set, open_set)
+            #     plot_rs_path(path, self.ox, self.oy)
+            #     plt.savefig("runs_rl/savefig.png")
+            #     plt.close() 
         
         
         if verbose:
