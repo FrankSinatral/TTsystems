@@ -16,6 +16,45 @@ import logging
 import random
 from joblib import Parallel, delayed
 
+def plot_configuration(start, goal, ox, oy, path):
+    plt.plot(ox, oy, 'sk', markersize=1)
+    plt.axis("equal")
+    ax = plt.gca() 
+    config = {
+            "w": 2.0, #[m] width of vehicle
+            "wb": 3.5, #[m] wheel base: rear to front steer
+            "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+            "rf": 4.5, #[m] distance from rear to vehicle front end
+            "rb": 1.0, #[m] distance from rear to vehicle back end
+            "tr": 0.5, #[m] tyre radius
+            "tw": 1.0, #[m] tyre width
+            "rtr": 2.0, #[m] rear to trailer wheel
+            "rtf": 1.0, #[m] distance from rear to trailer front end
+            "rtb": 3.0, #[m] distance from rear to trailer back end
+            "rtr2": 2.0, #[m] rear to second trailer wheel
+            "rtf2": 1.0, #[m] distance from rear to second trailer front end
+            "rtb2": 3.0, #[m] distance from rear to second trailer back end
+            "rtr3": 2.0, #[m] rear to third trailer wheel
+            "rtf3": 1.0, #[m] distance from rear to third trailer front end
+            "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+            "max_steer": 0.6, #[rad] maximum steering angle
+            "v_max": 2.0, #[m/s] maximum velocity 
+            "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "xi_max": (np.pi) / 4, # jack-knife constraint  
+        }
+    vehicle = tt_envs.ThreeTrailer(config)
+    # change here last plot goal and start
+    vehicle.reset(*goal)
+    
+    vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+    vehicle.reset(*start)
+    vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
+    if path is not None:
+        plt.plot(path.x, path.y, 'blue')
+    plt.savefig("reconstruct.png")
+    plt.close()
+
+
 def is_rectangle_intersect(rect1, rect2):
     # 检验两个长方形rect1和rect2是否相交
     # 这里简化处理，假设长方形平行于坐标轴
@@ -50,7 +89,7 @@ def pack_transition(transition_list):
     return pack_transition_list
 
 
-def save_results(results, batch_size=100):
+def save_results(results):
     save_dir = './planner_result/datas_for_random_map'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -224,6 +263,7 @@ def generate_using_hybrid_astar_three_trailer_random_2_obstacles_map(angle_type=
     #             1 -- 90
     #             2 -- -180
     #             3 -- -90
+    # Fank: make sure that the goal result
     input = np.array([0.0, 0.0, np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0), np.deg2rad(0.0)])
     ox, oy, goal_results, obstacles_info = define_random_map_with_2_obstacles(angle_type)
     goal = goal_results[angle_type//2]
@@ -260,26 +300,37 @@ def generate_using_hybrid_astar_three_trailer_random_2_obstacles_map(angle_type=
        "max_iter": 1000,
        "heuristic_type": "traditional",
     }
-    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
-    # planning api
-    
-    t1 = time.time()
-    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
-    t2 = time.time()
-    print("planning time:", t2 - t1)
+    # Fill up the things that will have
     result_dict = {"transition_list": None,
-                   "original_control_list": control_list,
+                   "original_control_list": None,
                    "difficulty": None,
                    "obstacles_info": obstacles_info,
                    "planning_config": config,
                    "start": input,
                    "goal": goal,
+                   "path": None,
                    }
+    # Running planner and get results
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # planning api
+    try:
+        t1 = time.time()
+        path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+        t2 = time.time()
+        print("planning time:", t2 - t1)
+        result_dict["path"] = path
+        result_dict["original_control_list"] = control_list
+    except:
+        print("failed finding path")
+    
     if control_list is not None:
         control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
         transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10, vehicle_config=config["controlled_vehicle_config"])
         result_dict["transition_list"] = transition_list
-        result_dict["difficulty"] = len(control_list)
+        if transition_list is not None:
+            result_dict["difficulty"] = len(control_list)
+        else:
+            result_dict["difficulty"] = np.inf
     else:
         result_dict["difficulty"] = np.inf
     
@@ -294,7 +345,33 @@ def run_simulation(angle_type):
 
 # def save_results_to_pickle(results, filename):
 #     with open(filename, 'wb') as f:
-#         pickle.dump(results, f)      
+#         pickle.dump(results, f)    
+
+def load_and_visualize(file_path, i=None):
+    # Fank: load from the result and visualize
+    with open(file_path, 'rb') as f:
+        results = pickle.load(f)
+    
+    for result_dict in results:
+        start = result_dict["start"]
+        goal = result_dict["goal"]
+        obstacles_info = result_dict["obstacles_info"]
+        transition_list = result_dict["transition_list"]
+        path = result_dict["path"]
+        map_bound = [(-30, -30), (-30, 30), (30, -30), (30, 30)]
+        Map = tt_envs.MapBound(map_bound)
+        obstacles = []
+        ox, oy = Map.sample_surface(0.1)
+        for obstacle_info in obstacles_info:
+            obstacle = tt_envs.QuadrilateralObstacle(obstacle_info)
+            obstacles.append(obstacle)
+        for obstacle in obstacles:
+            ox_obs, oy_obs = obstacle.sample_surface(0.1)
+            ox += ox_obs
+            oy += oy_obs
+        if transition_list is None:
+            path = None
+        plot_configuration(start, goal, ox, oy, path)
         
 def main():
     # Number of times to run the simulation for each angle_type
@@ -304,8 +381,11 @@ def main():
 
     # Using joblib to run simulations in parallel for each angle_type
     results = Parallel(n_jobs=num_jobs)(delayed(run_simulation)(angle_type=i) for i in range(4) for _ in range(num_runs))
-    
+    # run_simulation(angle_type=0)
+    # print(1)
     save_results(results)
+    # load_and_visualize('planner_result/datas_for_random_map/result_0.pkl')
+    
     
 if __name__ == "__main__":
     main()
