@@ -567,7 +567,29 @@ class TwoTrailer(Vehicle):
             return True
         return False
     
-    def plot(self, ax: Axes, action: np.ndarray, color: str = 'black') -> None:
+    # def plot(self, ax: Axes, action: np.ndarray, color: str = 'black') -> None:
+    #     '''
+    #     Car: three_trailer model class
+    #     x: center of rear wheel
+    #     y: center of rear wheel
+    #     yaw: yaw of rear wheel
+    #     yawt1: yaw of trailer1
+    #     yawt2: yaw of trailer2
+    #     yawt3: yaw of trailer3
+    #     steer: steer of front wheel
+    #     '''
+    #     _, steer = action
+    #     steer = self.steer_scale(steer)
+        
+    #     self.plot_tractor_and_four_wheels(ax, steer, color=color)
+    #     for i in range(1, 3):
+    #         self.plot_trailer_and_two_wheels(ax, number=i, color=color)
+    #     for i in range(1, 3):
+    #         self.plot_link(ax, number=i, color=color)
+        
+    #     self.plot_arrow(ax, l=self.WB * 0.8, color=color)
+    
+    def plot(self, ax: Axes, action: np.ndarray, color: str = 'black', is_full: bool = False) -> None:
         '''
         Car: three_trailer model class
         x: center of rear wheel
@@ -581,9 +603,9 @@ class TwoTrailer(Vehicle):
         _, steer = action
         steer = self.steer_scale(steer)
         
-        self.plot_tractor_and_four_wheels(ax, steer, color=color)
+        self.plot_tractor_and_four_wheels(ax, steer, color=color, is_full=is_full)
         for i in range(1, 3):
-            self.plot_trailer_and_two_wheels(ax, number=i, color=color)
+            self.plot_trailer_and_two_wheels(ax, number=i, color=color, is_full=is_full)
         for i in range(1, 3):
             self.plot_link(ax, number=i, color=color)
         
@@ -627,48 +649,96 @@ class TwoTrailer(Vehicle):
         ax.plot([x_hat_start, x_hat_end_R],
                  [y_hat_start, y_hat_end_R], color=color, linewidth=w)
     
-    def plot_tractor_and_four_wheels(self, ax: Axes, steer: float, color: str = 'black') -> None:
+    # def plot_tractor_and_four_wheels(self, ax: Axes, steer: float, color: str = 'black') -> None:
+    #     # get current state from the class
+    #     x, y, yaw, _, _ = self.state
+    #     # plot initial tractor
+    #     tractor = np.array([[-self.RB, -self.RB, self.RF, self.RF, -self.RB],
+    #                     [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
+    #     wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
+    #                     [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
+    #     frWheel = wheel.copy()
+    #     flWheel = wheel.copy()
+    #     rrWheel = wheel.copy()
+    #     rlWheel = wheel.copy()
+    #     # rotate to yaw
+    #     Rot1 = np.array([[np.cos(yaw), -np.sin(yaw)],
+    #                     [np.sin(yaw), np.cos(yaw)]])
+    #     tractor = np.dot(Rot1, tractor)
+    #     # move to the current position
+    #     tractor += np.array([[x], [y]])
+    #     # plot tractor
+    #     ax.plot(tractor[0, :], tractor[1, :], color, linewidth=1)
+    #     Rot2 = np.array([[np.cos(steer), -np.sin(steer)],
+    #                     [np.sin(steer), np.cos(steer)]])
+    #     frWheel = np.dot(Rot2, frWheel)
+    #     flWheel = np.dot(Rot2, flWheel)
+    #     frWheel += np.array([[self.WB], [-self.WD / 2]])
+    #     flWheel += np.array([[self.WB], [self.WD / 2]])
+    #     rrWheel[1, :] -= self.WD / 2
+    #     rlWheel[1, :] += self.WD / 2
+    #     frWheel = np.dot(Rot1, frWheel)
+    #     flWheel = np.dot(Rot1, flWheel)
+    #     rrWheel = np.dot(Rot1, rrWheel)
+    #     rlWheel = np.dot(Rot1, rlWheel)
+    #     frWheel += np.array([[x], [y]])
+    #     flWheel += np.array([[x], [y]])
+    #     rrWheel += np.array([[x], [y]])
+    #     rlWheel += np.array([[x], [y]])
+        
+    #     # plot tractor 4 wheels
+    #     ax.plot(frWheel[0, :], frWheel[1, :], color, linewidth=1)
+    #     ax.plot(rrWheel[0, :], rrWheel[1, :], color, linewidth=1)
+    #     ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
+    #     ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
+    
+    def plot_tractor_and_four_wheels(self, ax: Axes, steer: float, color: str = 'black', is_full: bool = False) -> None:
         # get current state from the class
         x, y, yaw, _, _ = self.state
         # plot initial tractor
         tractor = np.array([[-self.RB, -self.RB, self.RF, self.RF, -self.RB],
-                        [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
-        wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
-                        [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
-        frWheel = wheel.copy()
-        flWheel = wheel.copy()
-        rrWheel = wheel.copy()
-        rlWheel = wheel.copy()
+                            [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
         # rotate to yaw
         Rot1 = np.array([[np.cos(yaw), -np.sin(yaw)],
                         [np.sin(yaw), np.cos(yaw)]])
         tractor = np.dot(Rot1, tractor)
         # move to the current position
         tractor += np.array([[x], [y]])
-        # plot tractor
-        ax.plot(tractor[0, :], tractor[1, :], color, linewidth=1)
-        Rot2 = np.array([[np.cos(steer), -np.sin(steer)],
-                        [np.sin(steer), np.cos(steer)]])
-        frWheel = np.dot(Rot2, frWheel)
-        flWheel = np.dot(Rot2, flWheel)
-        frWheel += np.array([[self.WB], [-self.WD / 2]])
-        flWheel += np.array([[self.WB], [self.WD / 2]])
-        rrWheel[1, :] -= self.WD / 2
-        rlWheel[1, :] += self.WD / 2
-        frWheel = np.dot(Rot1, frWheel)
-        flWheel = np.dot(Rot1, flWheel)
-        rrWheel = np.dot(Rot1, rrWheel)
-        rlWheel = np.dot(Rot1, rlWheel)
-        frWheel += np.array([[x], [y]])
-        flWheel += np.array([[x], [y]])
-        rrWheel += np.array([[x], [y]])
-        rlWheel += np.array([[x], [y]])
-        
-        # plot tractor 4 wheels
-        ax.plot(frWheel[0, :], frWheel[1, :], color, linewidth=1)
-        ax.plot(rrWheel[0, :], rrWheel[1, :], color, linewidth=1)
-        ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
-        ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
+
+        if is_full:
+            # fill tractor
+            ax.fill(tractor[0, :], tractor[1, :], color)
+        else:
+            # plot tractor
+            ax.plot(tractor[0, :], tractor[1, :], color, linewidth=1)
+            wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
+                            [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
+            frWheel = wheel.copy()
+            flWheel = wheel.copy()
+            rrWheel = wheel.copy()
+            rlWheel = wheel.copy()
+            Rot2 = np.array([[np.cos(steer), -np.sin(steer)],
+                            [np.sin(steer), np.cos(steer)]])
+            frWheel = np.dot(Rot2, frWheel)
+            flWheel = np.dot(Rot2, flWheel)
+            frWheel += np.array([[self.WB], [-self.WD / 2]])
+            flWheel += np.array([[self.WB], [self.WD / 2]])
+            rrWheel[1, :] -= self.WD / 2
+            rlWheel[1, :] += self.WD / 2
+            frWheel = np.dot(Rot1, frWheel)
+            flWheel = np.dot(Rot1, flWheel)
+            rrWheel = np.dot(Rot1, rrWheel)
+            rlWheel = np.dot(Rot1, rlWheel)
+            frWheel += np.array([[x], [y]])
+            flWheel += np.array([[x], [y]])
+            rrWheel += np.array([[x], [y]])
+            rlWheel += np.array([[x], [y]])
+
+            # plot tractor 4 wheels
+            ax.plot(frWheel[0, :], frWheel[1, :], color, linewidth=1)
+            ax.plot(rrWheel[0, :], rrWheel[1, :], color, linewidth=1)
+            ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
+            ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
     
     def get_center_trailer(self, number: int) -> Tuple[float, float]:
         """
@@ -694,55 +764,116 @@ class TwoTrailer(Vehicle):
         y += self.WB / 2 * np.sin(yaw)
         return (x, y)
         
-    def plot_trailer_and_two_wheels(self, ax: Axes, number: int, color: str = 'black') -> None:
+    # def plot_trailer_and_two_wheels(self, ax: Axes, number: int, color: str = 'black') -> None:
         
+    #     x, y, yaw, yawt1, yawt2 = self.state
+        
+    #     trail = np.array([[-self.RTB, -self.RTB, -self.RTF, -self.RTF, -self.RTB],
+    #                     [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
+    #     trail += np.array([[self.RTR],[0]])
+    #     wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
+    #                     [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
+    #     ltWheel = wheel.copy()
+    #     rtWheel = wheel.copy()
+        
+    #     if number == 1:
+    #         Rot = np.array([[np.cos(yawt1), -np.sin(yawt1)],
+    #                         [np.sin(yawt1), np.cos(yawt1)]])
+    #         trail = np.dot(Rot, trail)
+    #         trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
+    #         trail += np.array([[x], [y]])
+    #         ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+            
+    #         ltWheel = np.dot(Rot, ltWheel)
+    #         rtWheel = np.dot(Rot, rtWheel)
+    #         x_trailer, y_trailer = self.get_center_trailer(number=1)
+    #         ltWheel += np.array([[x_trailer],[y_trailer]])
+    #         rtWheel += np.array([[x_trailer],[y_trailer]])
+    #         ltWheel -= np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
+    #         rtWheel += np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
+            
+    #         ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+    #         ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+        
+    #     else:
+    #         Rot = np.array([[np.cos(yawt2), -np.sin(yawt2)],
+    #                         [np.sin(yawt2), np.cos(yawt2)]])
+    #         trail = np.dot(Rot, trail)
+    #         trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
+    #         trail -= np.array([[self.RTR2 * np.cos(yawt2)],[self.RTR2 * np.sin(yawt2)]])
+    #         trail += np.array([[x], [y]])
+    #         ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+            
+    #         ltWheel = np.dot(Rot, ltWheel)
+    #         rtWheel = np.dot(Rot, rtWheel)
+    #         x_trailer, y_trailer = self.get_center_trailer(number=2)
+    #         ltWheel += np.array([[x_trailer],[y_trailer]])
+    #         rtWheel += np.array([[x_trailer],[y_trailer]])
+    #         ltWheel -= np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
+    #         rtWheel += np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
+    #         ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+    #         ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+    
+    def plot_trailer_and_two_wheels(self, ax: Axes, number: int, color: str = 'black', is_full: bool = False) -> None:
+        # get current state from the class
         x, y, yaw, yawt1, yawt2 = self.state
-        
-        trail = np.array([[-self.RTB, -self.RTB, -self.RTF, -self.RTF, -self.RTB],
-                        [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
-        trail += np.array([[self.RTR],[0]])
+
+        # plot initial trailer
+        trail = np.array([[-self.RTB, -self.RTB, self.RTF, self.RTF, -self.RTB],
+                          [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
+        trail += np.array([[self.RTR], [0]])
+
+        # plot initial wheels
         wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
-                        [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
+                          [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
         ltWheel = wheel.copy()
         rtWheel = wheel.copy()
-        
-        if number == 1:
-            Rot = np.array([[np.cos(yawt1), -np.sin(yawt1)],
-                            [np.sin(yawt1), np.cos(yawt1)]])
-            trail = np.dot(Rot, trail)
-            trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
-            trail += np.array([[x], [y]])
-            ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
-            
-            ltWheel = np.dot(Rot, ltWheel)
-            rtWheel = np.dot(Rot, rtWheel)
-            x_trailer, y_trailer = self.get_center_trailer(number=1)
-            ltWheel += np.array([[x_trailer],[y_trailer]])
-            rtWheel += np.array([[x_trailer],[y_trailer]])
-            ltWheel -= np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
-            rtWheel += np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
-            
-            ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
-            ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
-        
+
+        if is_full:
+            # fill trailer
+            ax.fill(trail[0, :], trail[1, :], color)
         else:
-            Rot = np.array([[np.cos(yawt2), -np.sin(yawt2)],
-                            [np.sin(yawt2), np.cos(yawt2)]])
-            trail = np.dot(Rot, trail)
-            trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
-            trail -= np.array([[self.RTR2 * np.cos(yawt2)],[self.RTR2 * np.sin(yawt2)]])
-            trail += np.array([[x], [y]])
-            ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
-            
-            ltWheel = np.dot(Rot, ltWheel)
-            rtWheel = np.dot(Rot, rtWheel)
-            x_trailer, y_trailer = self.get_center_trailer(number=2)
-            ltWheel += np.array([[x_trailer],[y_trailer]])
-            rtWheel += np.array([[x_trailer],[y_trailer]])
-            ltWheel -= np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
-            rtWheel += np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
-            ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
-            ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+            # plot trailer and its two wheels
+            if number == 1:
+                # rotate to yawt1
+                Rot = np.array([[np.cos(yawt1), -np.sin(yawt1)],
+                                [np.sin(yawt1), np.cos(yawt1)]])
+                trail = np.dot(Rot, trail)
+                trail -= np.array([[self.RTR * np.cos(yawt1)], [self.RTR * np.sin(yawt1)]])
+                trail += np.array([[x], [y]])
+                ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+
+                ltWheel = np.dot(Rot, ltWheel)
+                rtWheel = np.dot(Rot, rtWheel)
+                x_trailer, y_trailer = self.get_center_trailer(number=1)
+                ltWheel += np.array([[x_trailer], [y_trailer]])
+                rtWheel += np.array([[x_trailer], [y_trailer]])
+                ltWheel -= np.array([[self.WD / 2 * np.sin(yawt1)], [-self.WD / 2 * np.cos(yawt1)]])
+                rtWheel += np.array([[self.WD / 2 * np.sin(yawt1)], [-self.WD / 2 * np.cos(yawt1)]])
+
+                ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+                ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+
+            else:
+                # rotate to yawt2
+                Rot = np.array([[np.cos(yawt2), -np.sin(yawt2)],
+                                [np.sin(yawt2), np.cos(yawt2)]])
+                trail = np.dot(Rot, trail)
+                trail -= np.array([[self.RTR * np.cos(yawt1)], [self.RTR * np.sin(yawt1)]])
+                trail -= np.array([[self.RTR2 * np.cos(yawt2)], [self.RTR2 * np.sin(yawt2)]])
+                trail += np.array([[x], [y]])
+                ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+
+                ltWheel = np.dot(Rot, ltWheel)
+                rtWheel = np.dot(Rot, rtWheel)
+                x_trailer, y_trailer = self.get_center_trailer(number=2)
+                ltWheel += np.array([[x_trailer], [y_trailer]])
+                rtWheel += np.array([[x_trailer], [y_trailer]])
+                ltWheel -= np.array([[self.WD / 2 * np.sin(yawt2)], [-self.WD / 2 * np.cos(yawt2)]])
+                rtWheel += np.array([[self.WD / 2 * np.sin(yawt2)], [-self.WD / 2 * np.cos(yawt2)]])
+
+                ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+                ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
             
     def is_collision(self, ox: List[float], oy: List[float]) -> bool:
         '''
@@ -921,7 +1052,29 @@ class ThreeTrailer(Vehicle):
             return True
         return False
     
-    def plot(self, ax: Axes, action: np.ndarray, color: str = 'black') -> None:
+    # def plot(self, ax: Axes, action: np.ndarray, color: str = 'black') -> None:
+    #     '''
+    #     Car: three_trailer model class
+    #     x: center of rear wheel
+    #     y: center of rear wheel
+    #     yaw: yaw of rear wheel
+    #     yawt1: yaw of trailer1
+    #     yawt2: yaw of trailer2
+    #     yawt3: yaw of trailer3
+    #     steer: steer of front wheel
+    #     '''
+    #     _, steer = action
+    #     steer = self.steer_scale(steer)
+        
+    #     self.plot_tractor_and_four_wheels(ax, steer, color=color)
+    #     for i in range(1, 4):
+    #         self.plot_trailer_and_two_wheels(ax, number=i, color=color)
+    #     for i in range(1, 4):
+    #         self.plot_link(ax, number=i, color=color)
+        
+    #     self.plot_arrow(ax, l=self.WB * 0.8, color=color)
+    
+    def plot(self, ax: Axes, action: np.ndarray, color: str = 'black', is_full: bool = False) -> None:
         '''
         Car: three_trailer model class
         x: center of rear wheel
@@ -935,13 +1088,14 @@ class ThreeTrailer(Vehicle):
         _, steer = action
         steer = self.steer_scale(steer)
         
-        self.plot_tractor_and_four_wheels(ax, steer, color=color)
+        self.plot_tractor_and_four_wheels(ax, steer, color=color, is_full=is_full)
         for i in range(1, 4):
-            self.plot_trailer_and_two_wheels(ax, number=i, color=color)
+            self.plot_trailer_and_two_wheels(ax, number=i, color=color, is_full=is_full)
         for i in range(1, 4):
             self.plot_link(ax, number=i, color=color)
         
         self.plot_arrow(ax, l=self.WB * 0.8, color=color)
+    
     
     def plot_link(self, ax: Axes, number: int, color: str = 'black') -> None:
         x_trailer, y_trailer = self.get_center_trailer(number)
@@ -981,7 +1135,50 @@ class ThreeTrailer(Vehicle):
         ax.plot([x_hat_start, x_hat_end_R],
                  [y_hat_start, y_hat_end_R], color=color, linewidth=w)
     
-    def plot_tractor_and_four_wheels(self, ax: Axes, steer: float, color: str = 'black') -> None:
+    # def plot_tractor_and_four_wheels(self, ax: Axes, steer: float, color: str = 'black') -> None:
+    #     # get current state from the class
+    #     x, y, yaw, _, _, _ = self.state
+    #     # plot initial tractor
+    #     tractor = np.array([[-self.RB, -self.RB, self.RF, self.RF, -self.RB],
+    #                     [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
+    #     wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
+    #                     [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
+    #     frWheel = wheel.copy()
+    #     flWheel = wheel.copy()
+    #     rrWheel = wheel.copy()
+    #     rlWheel = wheel.copy()
+    #     # rotate to yaw
+    #     Rot1 = np.array([[np.cos(yaw), -np.sin(yaw)],
+    #                     [np.sin(yaw), np.cos(yaw)]])
+    #     tractor = np.dot(Rot1, tractor)
+    #     # move to the current position
+    #     tractor += np.array([[x], [y]])
+    #     # plot tractor
+    #     ax.plot(tractor[0, :], tractor[1, :], color, linewidth=1)
+    #     Rot2 = np.array([[np.cos(steer), -np.sin(steer)],
+    #                     [np.sin(steer), np.cos(steer)]])
+    #     frWheel = np.dot(Rot2, frWheel)
+    #     flWheel = np.dot(Rot2, flWheel)
+    #     frWheel += np.array([[self.WB], [-self.WD / 2]])
+    #     flWheel += np.array([[self.WB], [self.WD / 2]])
+    #     rrWheel[1, :] -= self.WD / 2
+    #     rlWheel[1, :] += self.WD / 2
+    #     frWheel = np.dot(Rot1, frWheel)
+    #     flWheel = np.dot(Rot1, flWheel)
+    #     rrWheel = np.dot(Rot1, rrWheel)
+    #     rlWheel = np.dot(Rot1, rlWheel)
+    #     frWheel += np.array([[x], [y]])
+    #     flWheel += np.array([[x], [y]])
+    #     rrWheel += np.array([[x], [y]])
+    #     rlWheel += np.array([[x], [y]])
+        
+    #     # plot tractor 4 wheels
+    #     ax.plot(frWheel[0, :], frWheel[1, :], color, linewidth=1)
+    #     ax.plot(rrWheel[0, :], rrWheel[1, :], color, linewidth=1)
+    #     ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
+    #     ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
+        
+    def plot_tractor_and_four_wheels(self, ax: Axes, steer: float, color: str = 'black', is_full: bool = False) -> None:
         # get current state from the class
         x, y, yaw, _, _, _ = self.state
         # plot initial tractor
@@ -1000,7 +1197,10 @@ class ThreeTrailer(Vehicle):
         # move to the current position
         tractor += np.array([[x], [y]])
         # plot tractor
-        ax.plot(tractor[0, :], tractor[1, :], color, linewidth=1)
+        if is_full:
+            ax.fill(tractor[0, :], tractor[1, :], color)
+        else:
+            ax.plot(tractor[0, :], tractor[1, :], color, linewidth=1)
         Rot2 = np.array([[np.cos(steer), -np.sin(steer)],
                         [np.sin(steer), np.cos(steer)]])
         frWheel = np.dot(Rot2, frWheel)
@@ -1019,10 +1219,11 @@ class ThreeTrailer(Vehicle):
         rlWheel += np.array([[x], [y]])
         
         # plot tractor 4 wheels
-        ax.plot(frWheel[0, :], frWheel[1, :], color, linewidth=1)
-        ax.plot(rrWheel[0, :], rrWheel[1, :], color, linewidth=1)
-        ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
-        ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
+        if not is_full:
+            ax.plot(frWheel[0, :], frWheel[1, :], color, linewidth=1)
+            ax.plot(rrWheel[0, :], rrWheel[1, :], color, linewidth=1)
+            ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
+            ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
     
     def get_center_trailer(self, number: int) -> Tuple[float, float]:
         """
@@ -1056,8 +1257,80 @@ class ThreeTrailer(Vehicle):
         y += self.WB / 2 * np.sin(yaw)
         return (x, y)
         
-    def plot_trailer_and_two_wheels(self, ax: Axes, number: int, color: str = 'black') -> None:
+    # def plot_trailer_and_two_wheels(self, ax: Axes, number: int, color: str = 'black') -> None:
         
+    #     x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        
+    #     trail = np.array([[-self.RTB, -self.RTB, -self.RTF, -self.RTF, -self.RTB],
+    #                     [self.W / 2, -self.W / 2, -self.W / 2, self.W / 2, self.W / 2]])
+    #     trail += np.array([[self.RTR],[0]])
+    #     wheel = np.array([[-self.TR, -self.TR, self.TR, self.TR, -self.TR],
+    #                     [self.TW / 4, -self.TW / 4, -self.TW / 4, self.TW / 4, self.TW / 4]])
+    #     ltWheel = wheel.copy()
+    #     rtWheel = wheel.copy()
+        
+    #     if number == 1:
+    #         Rot = np.array([[np.cos(yawt1), -np.sin(yawt1)],
+    #                         [np.sin(yawt1), np.cos(yawt1)]])
+    #         trail = np.dot(Rot, trail)
+    #         trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
+    #         trail += np.array([[x], [y]])
+    #         ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+            
+    #         ltWheel = np.dot(Rot, ltWheel)
+    #         rtWheel = np.dot(Rot, rtWheel)
+    #         x_trailer, y_trailer = self.get_center_trailer(number=1)
+    #         ltWheel += np.array([[x_trailer],[y_trailer]])
+    #         rtWheel += np.array([[x_trailer],[y_trailer]])
+    #         ltWheel -= np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
+    #         rtWheel += np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
+            
+    #         ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+    #         ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+        
+    #     elif number == 2:
+    #         Rot = np.array([[np.cos(yawt2), -np.sin(yawt2)],
+    #                         [np.sin(yawt2), np.cos(yawt2)]])
+    #         trail = np.dot(Rot, trail)
+    #         trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
+    #         trail -= np.array([[self.RTR2 * np.cos(yawt2)],[self.RTR2 * np.sin(yawt2)]])
+    #         trail += np.array([[x], [y]])
+    #         ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+            
+    #         ltWheel = np.dot(Rot, ltWheel)
+    #         rtWheel = np.dot(Rot, rtWheel)
+    #         x_trailer, y_trailer = self.get_center_trailer(number=2)
+    #         ltWheel += np.array([[x_trailer],[y_trailer]])
+    #         rtWheel += np.array([[x_trailer],[y_trailer]])
+    #         ltWheel -= np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
+    #         rtWheel += np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
+    #         ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+    #         ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+            
+            
+    #     if number == 3:
+    #         Rot = np.array([[np.cos(yawt3), -np.sin(yawt3)],
+    #                         [np.sin(yawt3), np.cos(yawt3)]])
+    #         trail = np.dot(Rot, trail)
+    #         trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
+    #         trail -= np.array([[self.RTR2 * np.cos(yawt2)],[self.RTR2 * np.sin(yawt2)]])
+    #         trail -= np.array([[self.RTR3 * np.cos(yawt3)],[self.RTR3 * np.sin(yawt3)]])
+    #         trail += np.array([[x], [y]])
+    #         ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+            
+    #         ltWheel = np.dot(Rot, ltWheel)
+    #         rtWheel = np.dot(Rot, rtWheel)
+    #         x_trailer, y_trailer = self.get_center_trailer(number=3)
+            
+    #         ltWheel += np.array([[x_trailer],[y_trailer]])
+    #         rtWheel += np.array([[x_trailer],[y_trailer]])
+    #         ltWheel -= np.array([[self.WD/2 * np.sin(yawt3)],[-self.WD/2 * np.cos(yawt3)]])
+    #         rtWheel += np.array([[self.WD/2 * np.sin(yawt3)],[-self.WD/2 * np.cos(yawt3)]])
+    #         ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+    #         ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+    
+    def plot_trailer_and_two_wheels(self, ax: Axes, number: int, color: str = 'black', is_full: bool = False) -> None:
+            
         x, y, yaw, yawt1, yawt2, yawt3 = self.state
         
         trail = np.array([[-self.RTB, -self.RTB, -self.RTF, -self.RTF, -self.RTB],
@@ -1074,18 +1347,21 @@ class ThreeTrailer(Vehicle):
             trail = np.dot(Rot, trail)
             trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
             trail += np.array([[x], [y]])
-            ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
-            
-            ltWheel = np.dot(Rot, ltWheel)
-            rtWheel = np.dot(Rot, rtWheel)
-            x_trailer, y_trailer = self.get_center_trailer(number=1)
-            ltWheel += np.array([[x_trailer],[y_trailer]])
-            rtWheel += np.array([[x_trailer],[y_trailer]])
-            ltWheel -= np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
-            rtWheel += np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
-            
-            ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
-            ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+            if is_full:
+                ax.fill(trail[0, :], trail[1, :], color)
+            else:
+                ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+                
+                ltWheel = np.dot(Rot, ltWheel)
+                rtWheel = np.dot(Rot, rtWheel)
+                x_trailer, y_trailer = self.get_center_trailer(number=1)
+                ltWheel += np.array([[x_trailer],[y_trailer]])
+                rtWheel += np.array([[x_trailer],[y_trailer]])
+                ltWheel -= np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
+                rtWheel += np.array([[self.WD/2 * np.sin(yawt1)],[-self.WD/2 * np.cos(yawt1)]])
+                
+                ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+                ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
         
         elif number == 2:
             Rot = np.array([[np.cos(yawt2), -np.sin(yawt2)],
@@ -1094,20 +1370,22 @@ class ThreeTrailer(Vehicle):
             trail -= np.array([[self.RTR * np.cos(yawt1)],[self.RTR * np.sin(yawt1)]])
             trail -= np.array([[self.RTR2 * np.cos(yawt2)],[self.RTR2 * np.sin(yawt2)]])
             trail += np.array([[x], [y]])
-            ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+            if is_full:
+                ax.fill(trail[0, :], trail[1, :], color)
+            else:
+                ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+                
+                ltWheel = np.dot(Rot, ltWheel)
+                rtWheel = np.dot(Rot, rtWheel)
+                x_trailer, y_trailer = self.get_center_trailer(number=2)
+                ltWheel += np.array([[x_trailer],[y_trailer]])
+                rtWheel += np.array([[x_trailer],[y_trailer]])
+                ltWheel -= np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
+                rtWheel += np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
+                ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+                ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
             
-            ltWheel = np.dot(Rot, ltWheel)
-            rtWheel = np.dot(Rot, rtWheel)
-            x_trailer, y_trailer = self.get_center_trailer(number=2)
-            ltWheel += np.array([[x_trailer],[y_trailer]])
-            rtWheel += np.array([[x_trailer],[y_trailer]])
-            ltWheel -= np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
-            rtWheel += np.array([[self.WD/2 * np.sin(yawt2)],[-self.WD/2 * np.cos(yawt2)]])
-            ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
-            ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
-            
-            
-        if number == 3:
+        elif number == 3:
             Rot = np.array([[np.cos(yawt3), -np.sin(yawt3)],
                             [np.sin(yawt3), np.cos(yawt3)]])
             trail = np.dot(Rot, trail)
@@ -1115,18 +1393,22 @@ class ThreeTrailer(Vehicle):
             trail -= np.array([[self.RTR2 * np.cos(yawt2)],[self.RTR2 * np.sin(yawt2)]])
             trail -= np.array([[self.RTR3 * np.cos(yawt3)],[self.RTR3 * np.sin(yawt3)]])
             trail += np.array([[x], [y]])
-            ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
-            
-            ltWheel = np.dot(Rot, ltWheel)
-            rtWheel = np.dot(Rot, rtWheel)
-            x_trailer, y_trailer = self.get_center_trailer(number=3)
-            
-            ltWheel += np.array([[x_trailer],[y_trailer]])
-            rtWheel += np.array([[x_trailer],[y_trailer]])
-            ltWheel -= np.array([[self.WD/2 * np.sin(yawt3)],[-self.WD/2 * np.cos(yawt3)]])
-            rtWheel += np.array([[self.WD/2 * np.sin(yawt3)],[-self.WD/2 * np.cos(yawt3)]])
-            ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
-            ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+            if is_full:
+                ax.fill(trail[0, :], trail[1, :], color)
+            else:
+                ax.plot(trail[0, :], trail[1, :], color, linewidth=1)
+                
+                ltWheel = np.dot(Rot, ltWheel)
+                rtWheel = np.dot(Rot, rtWheel)
+                x_trailer, y_trailer = self.get_center_trailer(number=3)
+                
+                ltWheel += np.array([[x_trailer],[y_trailer]])
+                rtWheel += np.array([[x_trailer],[y_trailer]])
+                ltWheel -= np.array([[self.WD/2 * np.sin(yawt3)],[-self.WD/2 * np.cos(yawt3)]])
+                rtWheel += np.array([[self.WD/2 * np.sin(yawt3)],[-self.WD/2 * np.cos(yawt3)]])
+                ax.plot(ltWheel[0, :], ltWheel[1, :], color, linewidth=1)
+                ax.plot(rtWheel[0, :], rtWheel[1, :], color, linewidth=1)
+    
             
     def is_collision(self, ox: List[float], oy: List[float]) -> bool:
         '''

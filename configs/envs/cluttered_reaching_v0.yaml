@@ -1,0 +1,49 @@
+allow_backward: true
+distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
+reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
+max_episode_steps: 120
+controlled_vehicle_config:
+  max_steer: 0.6
+  rb: 1.0
+  rf: 4.5
+  rtb: 3.0
+  rtb2: 3.0
+  rtb3: 3.0
+  rtf: 1.0
+  rtf2: 1.0
+  rtf3: 1.0
+  rtr: 2.0
+  rtr2: 2.0
+  rtr3: 2.0
+  safe_d: 0.0
+  tr: 0.5
+  tw: 1.0
+  v_max: 2.0
+  w: 2.0
+  wb: 3.5
+  wd: 1.4
+  xi_max: 0.7853981633974483
+evaluate_mode: false
+goal_region_bound:
+  x_min: -30
+  x_max: 30
+  y_min: -30
+  y_max: 30
+outer_wall_bound:
+  x_min: -30
+  x_max: 30
+  y_min: -30
+  y_max: 30 
+reward_type: sparse_reward_mod
+start_region_bound:
+  x_min: 0
+  x_max: 0
+  y_min: 0
+  y_max: 0
+sucess_goal_reward_sparse: 15
+sparse_reward_threshold: 0.5
+vehicle_type: three_trailer
+verbose: false
+N_steps: 10
+jack_knife_penalty: -100
+collision_penalty: -100

@@ -22,6 +22,9 @@ def gym_env_fn():
 def gym_reaching_tt_env_fn(config: dict): 
     return gym.make("tt-reaching-v0", config=config)
 
+def gym_cluttered_reaching_tt_env_fn(config: dict):
+    return gym.make("tt-cluttered-reaching-v0", config=config)
+
 def get_current_time_format():
     # get current time
     current_time = datetime.now()
@@ -32,7 +35,7 @@ def get_current_time_format():
 def main():
     # parser = get_config()
     # args = parser.parse_args()
-    with open("configs/envs/reaching_v0.yaml", 'r') as file:
+    with open("configs/envs/cluttered_reaching_v0.yaml", 'r') as file:
         config = yaml.safe_load(file)
     with open("configs/agents/sac_astar.yaml", 'r') as file:
         config_algo = yaml.safe_load(file)
@@ -58,8 +61,8 @@ def main():
     }
 
     
-    
-    agent = agents.SAC_ASTAR(env_fn=gym_reaching_tt_env_fn,
+    # to change the environment, change the env_fn
+    agent = agents.SAC_ASTAR(env_fn=gym_cluttered_reaching_tt_env_fn,
                 algo=config_algo['algo_name'],
                 ac_kwargs=ac_kwargs,
                 seed=seed,

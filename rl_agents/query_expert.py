@@ -127,7 +127,7 @@ def pack_transition(transition_list):
         i += 10
     return pack_transition_list
 
-def pack_transition_with_reward(goal, transition_list):
+def pack_transition_with_reward(goal, transition_list, obstacles_info=None):
     # for rl training
     
     pack_transition_list = []
@@ -138,9 +138,15 @@ def pack_transition_with_reward(goal, transition_list):
         _, _, next_state = transition_list[next_state_index]
         if i == len(transition_list) - 10:
             #pack mamually with reward
-            pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), 15, True])
+            if obstacles_info is not None:
+                pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), 15, True])
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), 15, True])
         else:
-            pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
+            if obstacles_info is not None:
+                pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), 15, True])
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
         i += 10
     return pack_transition_list
 
@@ -248,7 +254,16 @@ def generate_using_hybrid_astar_one_trailer_version2(input, goal):
     transition_list = forward_simulation_one_trailer(input, goal, control_recover_list, simulation_freq=10)
     return transition_list
 
-def generate_using_hybrid_astar_three_trailer(input, goal):
+def restore_obstacles_info(flattened_info):
+    # Reshape the flattened array to have 4 columns (for x_min, x_max, y_min, y_max)
+    reshaped_info = flattened_info.reshape(-1, 4)
+    
+    # Restore the original obstacle_info format
+    obstacle_info = [[(x_min, y_min), (x_min, y_max), (x_max, y_max), (x_max, y_min)] 
+                     for x_min, x_max, y_min, y_max in reshaped_info]
+    return obstacle_info
+
+def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     
@@ -259,13 +274,21 @@ def generate_using_hybrid_astar_three_trailer(input, goal):
     ox = ox_map
     oy = oy_map
     ox, oy = tt_envs.remove_duplicates(ox, oy)
+    obstacles_info = restore_obstacles_info(obstacles_info)
+    if obstacles_info is not None:
+        for rectangle in obstacles_info:
+            obstacle = tt_envs.QuadrilateralObstacle(rectangle)
+            ox_obs, oy_obs = obstacle.sample_surface(0.1)
+            ox += ox_obs
+            oy += oy_obs
+            
     config = {
        "plot_final_path": False,
        "plot_rs_path": False,
        "plot_expand_tree": False,
        "mp_step": 10,
        "range_steer_set": 20,
-       "max_iter": 20,
+       "max_iter": 50,
        "controlled_vehicle_config": {
                 "w": 2.0, #[m] width of vehicle
                 "wb": 3.5, #[m] wheel base: rear to front steer
@@ -320,11 +343,11 @@ def query_hybrid_astar_one_trailer(input, goal):
     pack_transition_list = pack_transition_with_reward(goal, transition_list)
     return pack_transition_list
 
-def query_hybrid_astar_three_trailer(input, goal):
+def query_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
     # fixed to 6-dim
-    transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
+    transition_list = generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info)
     if transition_list is not None:
-        pack_transition_list = pack_transition_with_reward(goal, transition_list)
+        pack_transition_list = pack_transition_with_reward(goal, transition_list, obstacles_info)
     else:
         return None
     return pack_transition_list

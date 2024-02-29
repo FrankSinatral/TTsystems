@@ -4909,8 +4909,9 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             path.rscontrollist = rscontrol_list
             # put calc_rs_cost_here
             path.rscost = self.calc_rs_path_cost_three_trailer_modify(path)
+            path.stepcost = len(path.x)
             # Fank: check here if there is jack_knife
-            if path.info["accept"] and (not path.info["collision"]):    
+            if path.info["accept"] and (not path.info["collision"]) and (not path.info["jack_knife"]):    
                 xind = round(path.x[-1] / self.xyreso)
                 yind = round(path.y[-1] / self.xyreso)
                 yawind = round(path.yaw[-1] / self.yawreso)
@@ -4930,13 +4931,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     else:
                         fd.append(-1.0)
                 fsteer = 0.0
-                try:
-                    final_node = hyastar.Node_three_trailer(self.vehicle, xind, yind, yawind, direction,
-                        fx, fy, fyaw, fyawt1, fyawt2, fyawt3, fd, fsteer, fcost, fpind)
-                    path.info["jack_knife"] = False
-                    path.info["final_node"] = final_node
-                except:
-                    path.info["jack_knife"] = True
+                
+                final_node = hyastar.Node_three_trailer(self.vehicle, xind, yind, yawind, direction,
+                    fx, fy, fyaw, fyawt1, fyawt2, fyawt3, fd, fsteer, fcost, fpind)
+                path.info["final_node"] = final_node
 
         return paths
     
@@ -5070,20 +5068,30 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         else:
             info["accept"] = True
         
-        if info["accept"]:
-            # Fank: check whether collision here
-            ind = range(0, len(path_x_list), self.config["collision_check_step"])
-            pathx = [path_x_list[k] for k in ind]
-            pathy = [path_y_list[k] for k in ind]
-            pathyaw = [path_yaw_list[k] for k in ind]
-            pathyawt1 = [path_yawt1_list[k] for k in ind]
-            pathyawt2 = [path_yawt2_list[k] for k in ind]
-            pathyawt3 = [path_yawt3_list[k] for k in ind]
-            if self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
-                info["collision"] = True
-            else:
-                # no collision
-                info["collision"] = False
+        
+        # Fank: check whether collision here
+        # Always perform collision check, regardless of the acceptance
+        ind = range(0, len(path_x_list), self.config["collision_check_step"])
+        pathx = [path_x_list[k] for k in ind]
+        pathy = [path_y_list[k] for k in ind]
+        pathyaw = [path_yaw_list[k] for k in ind]
+        pathyawt1 = [path_yawt1_list[k] for k in ind]
+        pathyawt2 = [path_yawt2_list[k] for k in ind]
+        pathyawt3 = [path_yawt3_list[k] for k in ind]
+        if self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
+            info["collision"] = True
+        else:
+            # no collision
+            info["collision"] = False
+            
+            
+        # Check for jack-knife
+        for yaw, yawt1, yawt2, yawt3 in zip(path_yaw_list, path_yawt1_list, path_yawt2_list, path_yawt3_list):
+            if abs(yaw - yawt1) >= config_dict["xi_max"] or abs(yawt1 - yawt2) >= config_dict["xi_max"] or abs(yawt2 - yawt3) >= config_dict["xi_max"]:
+                info["jack_knife"] = True
+                break
+        else:
+            info["jack_knife"] = False
         
         return path_x_list, path_y_list, path_yaw_list, path_yawt1_list, path_yawt2_list, path_yawt3_list, directions, info
     
@@ -5208,9 +5216,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         pq = hyastar.QueuePrior()
         
         for path in paths:
-            if path.info["jack_knife"] == False:
+            if (path.info["jack_knife"] == False) and (path.info["accept"] == True) and (path.info["collision"] == False):
                 find_feasible = True
                 return find_feasible, path
+            #TODO: I change rscost to stepcost for debug test
             pq.put(path, path.rscost)
         #TODO: may have to adjust
         while not pq.empty():
@@ -5857,6 +5866,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             # cost_qp = self.calc_euclidean_distance(node, ngoal)
                             # self.qp.put(node_ind, cost_qp)
                             self.qp.put(node_ind, self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
+                    if self.config["plot_expand_tree"]:
+                        self.plot_expand_tree(start, goal, closed_set, open_set)
+                        plot_rs_path(path, self.ox, self.oy)
+                        plt.savefig("runs_rl/savefig.png")
+                        plt.close() 
                 else:
                     if open_set[node_ind].cost > node.cost:
                         open_set[node_ind] = node
@@ -5903,11 +5917,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     # cost_qp = self.calc_euclidean_distance(node, ngoal)
                                     # self.qp.queue[node_ind] = cost_qp
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)          
-            # if self.config["plot_expand_tree"] and count % 1 == 0:
-            #     self.plot_expand_tree(start, goal, closed_set, open_set)
-            #     plot_rs_path(path, self.ox, self.oy)
-            #     plt.savefig("runs_rl/savefig.png")
-            #     plt.close() 
+            if self.config["plot_expand_tree"]:
+                self.plot_expand_tree(start, goal, closed_set, open_set)
+                plot_rs_path(path, self.ox, self.oy)
+                plt.savefig("runs_rl/savefig.png")
+                plt.close() 
         
         
         if verbose:

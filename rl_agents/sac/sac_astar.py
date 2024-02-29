@@ -30,10 +30,14 @@ from joblib import Parallel, delayed
 def find_expert_trajectory(o, vehicle_type):
         goal = o["desired_goal"]
         input = o["observation"]
+        try:
+            obstacles_info = o["obstacles_info"]
+        except:
+            obstacles_info = None
         if vehicle_type == "one_trailer":
             pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
         elif vehicle_type == "three_trailer":
-            pack_transition_list = query_hybrid_astar_three_trailer(input, goal)
+            pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info)
         return pack_transition_list
 
 class ReplayBuffer:
@@ -246,7 +250,10 @@ class SAC_ASTAR:
             register_tt_envs()
             self.env, self.test_env = env_fn(config), env_fn(config)
             self.state_dim = self.env.observation_space['observation'].shape[0]
-            self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float64)
+            if self.env_name.startswith("cluttered"):
+                self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 8,), np.float64)
+            else:
+                self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float64)
             self.obs_dim = self.box.shape
             self.act_dim = self.env.action_space.shape[0]
             # Action limit for clamping: critically, assumes all dimensions share the same bound!
@@ -468,7 +475,10 @@ class SAC_ASTAR:
             terminated, truncated, ep_ret, ep_len = False, False, 0, 0
             while not(terminated or truncated):
                 # Take deterministic actions at test time 
-                o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True))
+                if self.env_name.startswith('cluttered'):
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), True))
+                else:  
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True))
                 ep_ret += r
                 ep_len += 1
             average_ep_ret += ep_ret
@@ -546,6 +556,8 @@ class SAC_ASTAR:
             encounter_start_list.append(o)
             # add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
             # add_thread.start()
+            # astar_result = find_expert_trajectory(o, self.vehicle_type)
+            # self.add_results_to_buffer([astar_result])
         ep_ret, ep_len = 0, 0
         # o, ep_ret, ep_len = self.env.reset(), 0, 0
         if self.whether_her:
@@ -557,7 +569,10 @@ class SAC_ASTAR:
             # from a uniform distribution for better exploration. Afterwards, 
             # use the learned policy. 
             if t > self.start_steps:
-                a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]))
+                if self.env_name.startswith("cluttered"):
+                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]))
+                else:
+                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]))
             else:
                 a = self.env.action_space.sample()
 
@@ -575,9 +590,15 @@ class SAC_ASTAR:
 
             # Store experience to replay buffer
             #TODO: pad the observation to 6-dim
-            self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d)
+            if self.env_name.startswith("cluttered"):
+                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['obstacles_info']]), d)
+            else:
+                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d)
             if self.whether_her:
-                temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info['crashed']))
+                if self.env_name.startswith("cluttered"):
+                    temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['obstacles_info']]), d, info['crashed']))
+                else:
+                    temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info['crashed']))
                 # self.her_process_episode(temp_buffer)
             # Super critical, easy to overlook step: make sure to update 
             # most recent observation!
@@ -594,6 +615,7 @@ class SAC_ASTAR:
                 print("Finish Episode number:", self.finish_episode_number)
                 print("Episode Length:", ep_len)
                 if self.whether_astar:
+                    # TODO: change for testing
                     if self.finish_episode_number % 100 == 0:
                         print("Start Collecting Buffer from Astar")
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)

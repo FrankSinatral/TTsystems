@@ -1,10 +1,10 @@
 algo_name: 'sac_astar'
 seed: 50
-env_name: 'reaching-v0'
+env_name: 'cluttered-reaching-v0'
 sac_steps_per_epoch: 50000
 sac_epochs: 100
 replay_size: 1000000
-gamma: 0.95
+gamma: 0.99 # need to adjust when using cluttered env
 polyak: 0.95
 lr: 0.001
 alpha: 0.2
