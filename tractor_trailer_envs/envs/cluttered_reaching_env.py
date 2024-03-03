@@ -62,9 +62,7 @@ class TractorTrailerClutteredReachingEnv(Env):
             # "goal": (0, 0, 0, 0, 0, 0), # give with None (6 tuples)
             "evaluate_mode": False, # whether evaluate
             "allow_backward": True, # whether allow backward
-            "sucess_goal_reward_parking": -0.12,
             "sucess_goal_reward_sparse": 0,
-            "sucess_goal_reward_others": 100, # success reward
             # "continuous_step": False,
             "simulation_freq": 10,#[hz]
             # "using_stable_baseline": False, # whether using stable baseline
@@ -109,13 +107,12 @@ class TractorTrailerClutteredReachingEnv(Env):
                 "y_min": -30,
                 "y_max": 30,
             },
-            "goal_with_obstacles_info_list": None,
+            "goal_with_obstacles_info_list": None, # goal must be given together with obstacles_info as a list(each element a dict)
             "start_list": None,
-            "N_steps": 10,
+            "N_steps": 10, # number of steps for each action
             "jack_knife_penalty": 0,
             "collision_penalty": 0,
-            "obstacle_representation": "vector",
-            "use_rgb": True,
+            "use_rgb": True, # whether use rgb image as an observation
         }
         
     @staticmethod
@@ -151,18 +148,19 @@ class TractorTrailerClutteredReachingEnv(Env):
         
     def define_observation_space(self) -> None:
         # observation_space (all set to 6-dim space)
-        achieved_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float64)
-        desired_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float64)
-        observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float64)
+        achieved_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
+        desired_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
+        observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         
         # TODO: here we set the dimension of the obstacle info manually, in the future, we can make it more general
         self.observation_space = spaces.Dict({
             'achieved_goal': achieved_goal_space,
             'desired_goal': desired_goal_space,
             'observation': observation_space,
-            'obstacles_info': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float64),
+            'obstacles_info': spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32), # fixed two obstacles
+            'achieved_rgb_image': spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8),
         })
-        
+ 
     def define_action_space(self):
         # action_space
         action_low = np.array(
@@ -219,7 +217,8 @@ class TractorTrailerClutteredReachingEnv(Env):
         self.dt = 1 / self.config["simulation_freq"]
         self.act_limit = self.config["act_limit"]
         self.evaluate_mode = self.config['evaluate_mode']
-             
+        # add a white image
+        self.white_image = np.full((3, 84, 84), 255, dtype=np.uint8)   
                       
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -396,21 +395,22 @@ class TractorTrailerClutteredReachingEnv(Env):
     
     
     def extract_obstacles_info(self, obstacle_info):
-        # Extract the coordinates of the bottom left and top right corners for each obstacle
+        # [(), (), ...] -> [x1, x2, y1, y2, x1, x2, y1, y2, ...
         corners_info = [[min(point[0] for point in obstacle), max(point[0] for point in obstacle), 
                         min(point[1] for point in obstacle), max(point[1] for point in obstacle)] 
                         for obstacle in obstacle_info]
-        return np.array(corners_info, dtype=np.float64).flatten()
+        return np.array(corners_info, dtype=np.float32).flatten()
     
     
     def reset(self, **kwargs):
         
         # 6-dim
+        # seed if given
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
             np.random.seed(kwargs['seed'])
         if self.config["goal_with_obstacles_info_list"] is not None:
-            # random choose between a given goal list
+            # random choose between a given goal list if it is given
             number_goal_with_obstacles_info = len(self.config["goal_with_obstacles_info_list"])
             selected_index = np.random.randint(0, number_goal_with_obstacles_info)
             goal = self.config["goal_with_obstacles_info_list"][selected_index]["goal"]
@@ -427,8 +427,12 @@ class TractorTrailerClutteredReachingEnv(Env):
             self.goal = tuple(self.controlled_vehicle.observe())
         # self.goal = [x_coordinates, y_coordinates]
         self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
+        # fix the env model once we reset, this self.ox, self.oy, self.obstacles_info will not change 
+        # during the whole episode
+        self.ox, self.oy = ox, oy
+        self.obstacles_info = obstacles_info
         
-        
+        # currently under this env, we will not use the start_list for initialization
         if self.config["start_list"] is not None:
             # random choose between a given goal list
             number_starts = len(self.config["start_list"])
@@ -441,11 +445,11 @@ class TractorTrailerClutteredReachingEnv(Env):
         elif self.vehicle_type == "one_trailer":
             self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1)
         elif self.vehicle_type == "two_trailer":
-            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.seedyawt2)
+            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2)
         else:
             self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3)
         
-        if self.controlled_vehicle.is_collision(ox, oy):
+        if self.controlled_vehicle.is_collision(self.ox, self.oy):
             # best not meet this case
             self.terminated = True
         else:
@@ -456,34 +460,31 @@ class TractorTrailerClutteredReachingEnv(Env):
         if self.evaluate_mode:
             self.state_list = [self.controlled_vehicle.observe()]
             self.action_list = []
-            
+        # We will always render the image for cluttered env
+        if self.config["use_rgb"]:
+            rgb_image = self.render()
+        else:
+            rgb_image = self.white_image
         obs_dict = OrderedDict([
-            ('observation', self.controlled_vehicle.observe()),
-            ("achieved_goal", self.controlled_vehicle.observe()),
-            ("desired_goal", np.array(self.goal, dtype=np.float64)),
+            ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+            ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+            ("desired_goal", np.array(self.goal, dtype=np.float32)),
             ("obstacles_info", self.extract_obstacles_info(obstacles_info)),
+            ("achieved_rgb_image", rgb_image)
         ])
-        
         info_dict = {
             "crashed": False,
             "is_success": False,
             "jack_knife": False,
             "action": None,
             "old_state": None,
+            "old_rgb_image": None,
         }
-        self.ox, self.oy = ox, oy
-        self.obstacles_info = obstacles_info
-            
-        
         return obs_dict, info_dict
-    
-    
-    
-    
     
     def sparse_reward(self, state, state_, goal=None):
         if goal is None:
-            goal = np.array([self.goal], dtype=np.float64)
+            goal = np.array([self.goal], dtype=np.float32)
         # broadcast
         new_state_diff = state_ - goal
         new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
@@ -497,7 +498,7 @@ class TractorTrailerClutteredReachingEnv(Env):
     
     def sparse_reward_mod(self, state, state_, goal=None):
         if goal is None:
-            goal = np.array([self.goal], dtype=np.float64)
+            goal = np.array([self.goal], dtype=np.float32)
         # broadcast
         new_state_diff = state_ - goal
         new_weighted_distance = np.sqrt(np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item())
@@ -590,6 +591,10 @@ class TractorTrailerClutteredReachingEnv(Env):
     def step(self, action):
         old_state = self.controlled_vehicle.observe()
         action_clipped = np.clip(action, -self.act_limit, self.act_limit)
+        if self.config["use_rgb"]:
+            old_rgb_image = self.render()
+        else:
+            old_rgb_image = self.white_image
 
         for _ in range(self.config["N_steps"]):
             self.controlled_vehicle.step(action_clipped, self.dt, self.config["allow_backward"])
@@ -599,12 +604,13 @@ class TractorTrailerClutteredReachingEnv(Env):
 
         state = self.controlled_vehicle.observe()
         reward = self.reward(old_state, state)
-
-        rgb_image = self.render() if self.config["use_rgb"] else None
-
+        if self.config["use_rgb"]:   
+            new_rgb_image = self.render()
+        else:
+            new_rgb_image = self.white_image
         crashed = self.controlled_vehicle.is_collision(self.ox, self.oy)
         jack_knife = self.controlled_vehicle._is_jack_knife()
-
+        # still need to change reward
         if crashed:
             self.terminated = True
             reward += self.config["collision_penalty"]
@@ -615,25 +621,29 @@ class TractorTrailerClutteredReachingEnv(Env):
 
         if reward >= self.config['sucess_goal_reward_sparse']:
             self.terminated = True
+            is_success = True
+        else:
+            is_success = False
 
         self.current_step += 1
         if self.current_step >= self.config["max_episode_steps"]:
             self.truncated = True
 
         obs_dict = OrderedDict([
-            ('observation', state),
-            ("achieved_goal", state),
-            ("desired_goal", np.array(self.goal, dtype=np.float64)),
+            ('observation', state.astype(np.float32)),
+            ("achieved_goal", state.astype(np.float32)),
+            ("desired_goal", np.array(self.goal, dtype=np.float32)),
             ("obstacles_info", self.extract_obstacles_info(self.obstacles_info)),
+            ("achieved_rgb_image", new_rgb_image),
         ])
 
         info_dict = {
             "crashed": crashed,
-            "is_success": self.terminated,
+            "is_success": is_success,
             "jack_knife": jack_knife,
             "action": action_clipped,
             "old_state": old_state,
-            "rgb_image": rgb_image,
+            "old_rgb_image": old_rgb_image,
         }
 
         return obs_dict, reward, self.terminated, self.truncated, info_dict
@@ -681,15 +691,15 @@ class TractorTrailerClutteredReachingEnv(Env):
     #     return fig  # Return the figure object
     
 
-    def render(self, mode='human'):
-        assert self.evaluate_mode
+    def render(self):
+        # assert self.evaluate_mode
         fig, ax = plt.subplots()  # Set the size of the figure
 
         map_vertices = self.map.vertices + [self.map.vertices[0]]
         map_x, map_y = zip(*map_vertices)
         plt.plot(map_x, map_y, 'r-')
-
-        self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue', is_full=True)
+        # here we full the vehicle so we don't care the exact action
+        self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), 'blue', is_full=True)
 
         gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
         self.plot_vehicle = deepcopy(self.controlled_vehicle)
@@ -711,12 +721,62 @@ class TractorTrailerClutteredReachingEnv(Env):
         rgb_img = resized_img.convert('RGB')
 
         # Save the image
-        rgb_img.save("runs_rl/tractor_trailer_envs.png")
+        # rgb_img.save("runs_rl/tractor_trailer_envs.png")
 
         buf.close()
+        plt.close(fig) # close the current figure window
 
-        return rgb_img  # Return the PIL Image object
+        return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.uint8)  # Return the PIL Image object
     
+    def reconstruct_image_from_observation(self, observation):
+        # a helper fuction that helps to reconstruct the image from the full-dim(26) observation
+        # [x1, x2, y1, y2, x1, x2, y1, y2, ...] -> image
+        start = observation[:6]
+        goal = observation[12:18]
+        
+        obstacles_info_raw = observation[-8:]
+        
+        # Reconstruct 'obstacles_info' as a list of tuples
+        obstacles_info = [[(obstacles_info_raw[i], obstacles_info_raw[i+2]), 
+                        (obstacles_info_raw[i], obstacles_info_raw[i+3]), 
+                        (obstacles_info_raw[i+1], obstacles_info_raw[i+3]), 
+                        (obstacles_info_raw[i+1], obstacles_info_raw[i+2])] 
+                        for i in range(0, len(obstacles_info_raw), 4)]
+        
+        fig, ax = plt.subplots()
+        map_vertices = self.map.vertices + [self.map.vertices[0]]
+        map_x, map_y = zip(*map_vertices)
+        plt.plot(map_x, map_y, 'r-')
+        # Notice here we only
+        plot_vehicle = deepcopy(self.controlled_vehicle)
+        sx, sy, syaw0, syawt1, syawt2, syawt3 = start
+        plot_vehicle.reset(sx, sy, syaw0, syawt1, syawt2, syawt3)
+
+        plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue', is_full=True)   
+        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = goal
+        plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
+        plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green', is_full=True)  
+        for obstacle in obstacles_info:
+            xs, ys = zip(*obstacle)
+            ax.fill(xs, ys, 'red')
+            
+        ax.axis('off')  
+        # Convert the figure to a PIL Image object
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png')
+        buf.seek(0)
+        img = Image.open(buf)
+        # Resize the image and convert it to RGB
+        resized_img = img.resize((84, 84), Image.LANCZOS)
+        rgb_img = resized_img.convert('RGB')
+
+        # Save the image
+        rgb_img.save("runs_rl/tractor_trailer_envs2.png")
+
+        buf.close()
+        plt.close(fig) # close the current figure window
+
+        return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.float32)  # Return the PIL Image object
     
     def plot_obstacles(self, ax):
         for obstacle in self.obstacles_info:
@@ -853,3 +913,5 @@ class TractorTrailerClutteredReachingEnv(Env):
             ani.save(base_path + str(save_index) + extension, writer=writer) 
         else:
             ani.save(save_dir, writer=writer)
+            
+        plt.close(fig)

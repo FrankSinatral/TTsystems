@@ -47,3 +47,4 @@ verbose: false
 N_steps: 10
 jack_knife_penalty: -100
 collision_penalty: -100
+use_rgb: true

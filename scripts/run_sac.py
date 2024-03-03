@@ -9,6 +9,7 @@ import rl_agents as agents
 import tractor_trailer_envs as tt_envs
 from tractor_trailer_envs import register_tt_envs
 from datetime import datetime
+from rl_agents.sac import core
 
 # from rl_training.config import get_config
 
@@ -60,36 +61,67 @@ def main():
         "activation": activation_fn
     }
 
-    
-    # to change the environment, change the env_fn
-    agent = agents.SAC_ASTAR(env_fn=gym_cluttered_reaching_tt_env_fn,
-                algo=config_algo['algo_name'],
-                ac_kwargs=ac_kwargs,
-                seed=seed,
-                steps_per_epoch=config_algo['sac_steps_per_epoch'],
-                epochs=config_algo['sac_epochs'],
-                replay_size=config_algo['replay_size'],
-                gamma=config_algo['gamma'],
-                polyak=config_algo['polyak'],
-                lr=config_algo['lr'],
-                alpha=config_algo['alpha'],
-                batch_size=config_algo['batch_size'],
-                start_steps=config_algo['start_steps'],
-                update_after=config_algo['update_after'],
-                update_every=config_algo['update_every'],
-                # missing max_ep_len
-                logger_kwargs=logger_kwargs, 
-                save_freq=config_algo['save_freq'],
-                num_test_episodes=config_algo['num_test_episodes'],
-                log_dir=config_algo['log_dir'],
-                whether_her=config_algo['whether_her'],
-                use_automatic_entropy_tuning=config_algo['use_auto'],
-                env_name=config_algo['env_name'],
-                pretrained=config_algo['pretrained'],
-                pretrained_itr=config_algo['pretrained_itr'],
-                pretrained_dir=config_algo['pretrained_dir'],
-                whether_astar=config_algo['whether_astar'],
-                config=config)
+    if config["use_rgb"]:
+        agent = agents.SAC_ASTAR(env_fn=gym_cluttered_reaching_tt_env_fn,
+                    algo=config_algo['algo_name'],
+                    actor_critic=core.CNNActorCritic,
+                    ac_kwargs=ac_kwargs,
+                    seed=seed,
+                    steps_per_epoch=config_algo['sac_steps_per_epoch'],
+                    epochs=config_algo['sac_epochs'],
+                    replay_size=config_algo['replay_size'],
+                    gamma=config_algo['gamma'],
+                    polyak=config_algo['polyak'],
+                    lr=config_algo['lr'],
+                    alpha=config_algo['alpha'],
+                    batch_size=config_algo['batch_size'],
+                    start_steps=config_algo['start_steps'],
+                    update_after=config_algo['update_after'],
+                    update_every=config_algo['update_every'],
+                    # missing max_ep_len
+                    logger_kwargs=logger_kwargs, 
+                    save_freq=config_algo['save_freq'],
+                    num_test_episodes=config_algo['num_test_episodes'],
+                    log_dir=config_algo['log_dir'],
+                    whether_her=config_algo['whether_her'],
+                    use_automatic_entropy_tuning=config_algo['use_auto'],
+                    env_name=config_algo['env_name'],
+                    pretrained=config_algo['pretrained'],
+                    pretrained_itr=config_algo['pretrained_itr'],
+                    pretrained_dir=config_algo['pretrained_dir'],
+                    whether_astar=config_algo['whether_astar'],
+                    config=config)
+    else:
+        # to change the environment, change the env_fn
+        agent = agents.SAC_ASTAR(env_fn=gym_cluttered_reaching_tt_env_fn,
+                    algo=config_algo['algo_name'],
+                    ac_kwargs=ac_kwargs,
+                    seed=seed,
+                    steps_per_epoch=config_algo['sac_steps_per_epoch'],
+                    epochs=config_algo['sac_epochs'],
+                    replay_size=config_algo['replay_size'],
+                    gamma=config_algo['gamma'],
+                    polyak=config_algo['polyak'],
+                    lr=config_algo['lr'],
+                    alpha=config_algo['alpha'],
+                    batch_size=config_algo['batch_size'],
+                    start_steps=config_algo['start_steps'],
+                    update_after=config_algo['update_after'],
+                    update_every=config_algo['update_every'],
+                    # missing max_ep_len
+                    logger_kwargs=logger_kwargs, 
+                    save_freq=config_algo['save_freq'],
+                    num_test_episodes=config_algo['num_test_episodes'],
+                    log_dir=config_algo['log_dir'],
+                    whether_her=config_algo['whether_her'],
+                    use_automatic_entropy_tuning=config_algo['use_auto'],
+                    env_name=config_algo['env_name'],
+                    pretrained=config_algo['pretrained'],
+                    pretrained_itr=config_algo['pretrained_itr'],
+                    pretrained_dir=config_algo['pretrained_dir'],
+                    whether_astar=config_algo['whether_astar'],
+                    astar_ablation=config_algo['astar_ablation'],
+                    config=config)
     agent.run()
         
     print(1)

@@ -271,7 +271,7 @@ class TractorTrailerReachingEnv(Env):
         elif self.vehicle_type == "one_trailer":
             self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1)
         elif self.vehicle_type == "two_trailer":
-            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.seedyawt2)
+            self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2)
         else:
             self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3)
         ox, oy = self.map.sample_surface(0.1)

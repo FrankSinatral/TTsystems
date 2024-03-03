@@ -21,7 +21,8 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: True
+whether_astar: true
+astar_ablation: false
 
 pretrained: False
 pretrained_itr: 2499999

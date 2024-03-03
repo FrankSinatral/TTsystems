@@ -1,7 +1,7 @@
 allow_backward: true
 distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
 reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
-max_episode_steps: 40
+max_episode_steps: 120
 controlled_vehicle_config:
   max_steer: 0.6
   rb: 1.0
@@ -40,13 +40,11 @@ start_region_bound:
   x_max: 0
   y_min: 0
   y_max: 0
-sucess_goal_reward_others: 100
-sucess_goal_reward_parking: -0.12
 sucess_goal_reward_sparse: 15
-diff_distance_threshold: 0.1
-potential_reward_threshold: 0.5
 sparse_reward_threshold: 0.5
 vehicle_type: three_trailer
 verbose: false
 N_steps: 10
-jack_knife_penalty: -20
+jack_knife_penalty: -100
+collision_penalty: -100
+use_rgb: false

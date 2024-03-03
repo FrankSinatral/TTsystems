@@ -274,13 +274,14 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
     ox = ox_map
     oy = oy_map
     ox, oy = tt_envs.remove_duplicates(ox, oy)
-    obstacles_info = restore_obstacles_info(obstacles_info)
     if obstacles_info is not None:
-        for rectangle in obstacles_info:
-            obstacle = tt_envs.QuadrilateralObstacle(rectangle)
-            ox_obs, oy_obs = obstacle.sample_surface(0.1)
-            ox += ox_obs
-            oy += oy_obs
+        obstacles_info = restore_obstacles_info(obstacles_info)
+        if obstacles_info is not None:
+            for rectangle in obstacles_info:
+                obstacle = tt_envs.QuadrilateralObstacle(rectangle)
+                ox_obs, oy_obs = obstacle.sample_surface(0.1)
+                ox += ox_obs
+                oy += oy_obs
             
     config = {
        "plot_final_path": False,
