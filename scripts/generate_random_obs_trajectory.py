@@ -563,7 +563,7 @@ def main():
     # # for _ in range(1000):
     # #     run_simulation(angle_type=3)
     # # print(1)
-    file_path = 'planner_result/datas_for_random_map/failed_result_0.pkl'
+    file_path = 'planner_result/datas_for_random_map/result_1.pkl'
     # analyze_abnormal_results(file_path)
     # analyze_abnormal_results(file_path)
     load_and_visualize(file_path)

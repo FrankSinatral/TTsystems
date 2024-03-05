@@ -12,7 +12,7 @@ import sys
 from tqdm import trange
 from tqdm import tqdm
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) +
-                "/../../TTsystems_and_PINN/")
+                "/../../TTsystems/")
 # import core
 # Some of the nn defined here
 import rl_agents.sac.core as core

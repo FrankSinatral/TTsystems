@@ -129,6 +129,7 @@ def pack_transition(transition_list):
 
 def pack_transition_with_reward(goal, transition_list, obstacles_info=None):
     # for rl training
+    # add reward every 10 steps
     
     pack_transition_list = []
     i = 0

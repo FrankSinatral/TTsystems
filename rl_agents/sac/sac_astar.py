@@ -87,8 +87,8 @@ class ImageReplayBuffer:
         self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
         self.rew_buf = np.zeros(size, dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
-        self.obs_image_buf = np.zeros((size, 3, 84, 84), dtype=np.float32)  # Buffer for current observation images
-        self.obs2_image_buf = np.zeros((size, 3, 84, 84), dtype=np.float32)  # Buffer for next observation images
+        self.obs_image_buf = np.zeros((size, 3, 84, 84), dtype=np.uint8)  # Buffer for current observation images
+        self.obs2_image_buf = np.zeros((size, 3, 84, 84), dtype=np.uint8)  # Buffer for next observation images
         self.ptr, self.size, self.max_size = 0, 0, size
         self.device = device
 
@@ -106,13 +106,13 @@ class ImageReplayBuffer:
     def sample_batch(self, batch_size=32):
         idxs = np.random.randint(0, self.size, size=batch_size)
         batch = dict(obs=self.obs_buf[idxs],
-                     obs2=self.obs2_buf[idxs],
-                     act=self.act_buf[idxs],
-                     rew=self.rew_buf[idxs],
-                     done=self.done_buf[idxs],
-                     obs_image=self.obs_image_buf[idxs],  # Add current observation image to batch
-                     obs2_image=self.obs2_image_buf[idxs])  # Rename next_obs_image to obs2_image in batch
-        return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) for k,v in batch.items()}
+                 obs2=self.obs2_buf[idxs],
+                 act=self.act_buf[idxs],
+                 rew=self.rew_buf[idxs],
+                 done=self.done_buf[idxs],
+                 obs_image=self.obs_image_buf[idxs].astype(np.uint8),  # Convert to np.uint8
+                 obs2_image=self.obs2_image_buf[idxs].astype(np.uint8))  # Convert to np.uint8
+        return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) if k not in ['obs_image', 'obs2_image'] else torch.as_tensor(v, dtype=torch.uint8).to(self.device) for k,v in batch.items()}
 
 class SAC_ASTAR:
     def __init__(self, 
@@ -625,7 +625,7 @@ class SAC_ASTAR:
                         o, a, o2, r, d = transition
                         o_image = self.env.unwrapped.reconstruct_image_from_observation(o)
                         o2_image = self.env.unwrapped.reconstruct_image_from_observation(o2)
-                        self.replay_buffer.store(o[:18], o_image, a.astype(np.float32), r, o2[:18], o2_image, d)
+                        self.replay_buffer.store(o, o_image, a.astype(np.float32), r, o2, o2_image, d)
                 else:
                     for transition in pack_transition_list:
                             o, a, o2, r, d = transition
@@ -773,6 +773,7 @@ class SAC_ASTAR:
 
                 # Test the performance of the deterministic version of the agent.
                 self.test_agent(t)
+            print("Timestep:", t)
                 
         self.save(self.save_model_path +'/model_final.pth')
                 

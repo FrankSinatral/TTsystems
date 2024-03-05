@@ -776,7 +776,7 @@ class TractorTrailerClutteredReachingEnv(Env):
         buf.close()
         plt.close(fig) # close the current figure window
 
-        return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.float32)  # Return the PIL Image object
+        return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.uint8)  # Return the PIL Image object
     
     def plot_obstacles(self, ax):
         for obstacle in self.obstacles_info:

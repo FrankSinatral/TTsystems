@@ -1,10 +1,10 @@
 algo_name: 'sac_astar'
-seed: 50
-env_name: 'cluttered-reaching-v0'
+seed: 10
+env_name: 'reaching-v0'
 sac_steps_per_epoch: 50000
 sac_epochs: 100
-replay_size: 1000000
-gamma: 0.99 # need to adjust when using cluttered env
+replay_size: 500000 # for cluttered, set to 500000
+gamma: 0.95 # need to adjust to 0.99 when using cluttered env
 polyak: 0.95
 lr: 0.001
 alpha: 0.2
@@ -12,8 +12,8 @@ batch_size: 1024
 start_steps: 1000
 update_after: 1000
 update_every: 2000
-save_freq: 1
-num_test_episodes: 100
+save_freq: 10
+num_test_episodes: 100 # for cluttered env set to 10
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
@@ -22,7 +22,7 @@ hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
 whether_astar: true
-astar_ablation: false
+astar_ablation: true # true stands for ablation study
 
 pretrained: False
 pretrained_itr: 2499999
