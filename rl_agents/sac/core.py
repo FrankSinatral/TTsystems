@@ -123,7 +123,7 @@ class SquashedGaussianCNNActor(nn.Module):
 
     def forward(self, obs, image_obs, deterministic=False, with_logprob=True):
         # this may still have to be changed
-        cnn_net_out = self.cnn_net(image_obs)
+        cnn_net_out = self.cnn_net(image_obs/255.0) # Normalization
         net_out = self.net(torch.cat([obs, cnn_net_out], dim=-1))
         mu = self.mu_layer(net_out)
         log_std = self.log_std_layer(net_out)
@@ -175,7 +175,7 @@ class CNNQFunction(nn.Module):
         self.q = mlp([obs_dim + act_dim + 512] + list(hidden_sizes) + [1], activation)
 
     def forward(self, obs, image_obs, act):
-        cnn_net_out = self.cnn_net(image_obs)
+        cnn_net_out = self.cnn_net(image_obs/255.0)
         q = self.q(torch.cat([obs, cnn_net_out, act], dim=-1))
         return torch.squeeze(q, -1) # Critical to ensure q has right shape.
 

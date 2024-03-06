@@ -15,10 +15,10 @@ import torch
 import os.path as osp, time, atexit, os
 import warnings
 try:
-    from rl_agents.utils.mpi_tools import proc_id, mpi_statistics_scalar
+    # from rl_agents.utils.mpi_tools import proc_id, mpi_statistics_scalar
     from rl_agents.utils.serialization_utils import convert_json
 except:
-    from mpi_tools import proc_id, mpi_statistics_scalar
+    # from mpi_tools import proc_id, mpi_statistics_scalar
     from serialization_utils import convert_json
 
 
@@ -47,33 +47,253 @@ def colorize(string, color, bold=False, highlight=False):
     if bold: attr.append('1')
     return '\x1b[%sm%s\x1b[0m' % (';'.join(attr), string)
 
-# def restore_tf_graph(sess, fpath):
+def simple_statistics_scalar(x, with_min_and_max=False):
+    """
+    Get mean/std and optional min/max of scalar x without MPI processes.
+
+    Args:
+        x: An array containing samples of the scalar to produce statistics
+            for.
+
+        with_min_and_max (bool): If true, return min and max of x in 
+            addition to mean and std.
+    """
+    x = np.array(x, dtype=np.float32)  # ensure that x is a np array
+    mean = np.mean(x)  # calculate mean
+    std = np.std(x)  # calculate standard deviation
+
+    if with_min_and_max:
+        min_val = np.min(x)  # calculate min value
+        max_val = np.max(x)  # calculate max value
+        return mean, std, min_val, max_val
+    return mean, std
+
+# class Logger:
 #     """
-#     Loads graphs saved by Logger.
+#     A general-purpose logger.
 
-#     Will output a dictionary whose keys and values are from the 'inputs' 
-#     and 'outputs' dict you specified with logger.setup_tf_saver().
-
-#     Args:
-#         sess: A Tensorflow session.
-#         fpath: Filepath to save directory.
-
-#     Returns:
-#         A dictionary mapping from keys to tensors in the computation graph
-#         loaded from ``fpath``. 
+#     Makes it easy to save diagnostics, hyperparameter configurations, the 
+#     state of a training run, and the trained model.
 #     """
-#     tf.saved_model.loader.load(
-#                 sess,
-#                 [tf.saved_model.tag_constants.SERVING],
-#                 fpath
-#             )
-#     model_info = joblib.load(osp.join(fpath, 'model_info.pkl'))
-#     graph = tf.get_default_graph()
-#     model = dict()
-#     model.update({k: graph.get_tensor_by_name(v) for k,v in model_info['inputs'].items()})
-#     model.update({k: graph.get_tensor_by_name(v) for k,v in model_info['outputs'].items()})
-#     return model
 
+#     def __init__(self, output_dir=None, output_fname='progress.txt', exp_name=None):
+#         """
+#         Initialize a Logger.
+
+#         Args:
+#             output_dir (string): A directory for saving results to. If 
+#                 ``None``, defaults to a temp directory of the form
+#                 ``/tmp/experiments/somerandomnumber``.
+
+#             output_fname (string): Name for the tab-separated-value file 
+#                 containing metrics logged throughout a training run. 
+#                 Defaults to ``progress.txt``. 
+
+#             exp_name (string): Experiment name. If you run multiple training
+#                 runs and give them all the same ``exp_name``, the plotter
+#                 will know to group them. (Use case: if you run the same
+#                 hyperparameter configuration with multiple random seeds, you
+#                 should give them all the same ``exp_name``.)
+#         """
+#         if proc_id()==0:
+#             self.output_dir = output_dir or "/tmp/experiments/%i"%int(time.time())
+#             if osp.exists(self.output_dir):
+#                 print("Warning: Log dir %s already exists! Storing info there anyway."%self.output_dir)
+#             else:
+#                 os.makedirs(self.output_dir)
+#             self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
+            
+#             atexit.register(self.output_file.close)
+#             print(colorize("Logging data to %s"%self.output_file.name, 'green', bold=True))
+#         else:
+#             self.output_dir = None
+#             self.output_file = None
+#         self.first_row=True
+#         self.log_headers = []
+#         self.log_current_row = {}
+#         self.exp_name = exp_name
+
+#     def log(self, msg, color='green'):
+#         """Print a colorized message to stdout."""
+#         if proc_id()==0:
+#             print(colorize(msg, color, bold=True))
+
+#     def log_tabular(self, key, val):
+#         """
+#         Log a value of some diagnostic.
+
+#         Call this only once for each diagnostic quantity, each iteration.
+#         After using ``log_tabular`` to store values for each diagnostic,
+#         make sure to call ``dump_tabular`` to write them out to file and
+#         stdout (otherwise they will not get saved anywhere).
+#         """
+#         if self.first_row:
+#             self.log_headers.append(key)
+#         else:
+#             assert key in self.log_headers, "Trying to introduce a new key %s that you didn't include in the first iteration"%key
+#         assert key not in self.log_current_row, "You already set %s this iteration. Maybe you forgot to call dump_tabular()"%key
+#         self.log_current_row[key] = val
+
+#     def save_config(self, config):
+#         """
+#         Log an experiment configuration.
+
+#         Call this once at the top of your experiment, passing in all important
+#         config vars as a dict. This will serialize the config to JSON, while
+#         handling anything which can't be serialized in a graceful way (writing
+#         as informative a string as possible). 
+
+#         Example use:
+
+#         .. code-block:: python
+
+#             logger = EpochLogger(**logger_kwargs)
+#             logger.save_config(locals())
+#         """
+#         config_json = convert_json(config)
+#         if self.exp_name is not None:
+#             config_json['exp_name'] = self.exp_name
+#         if proc_id()==0:
+#             output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
+#             print(colorize('Saving config:\n', color='cyan', bold=True))
+#             print(output)
+#             outfile = osp.join(self.output_dir, "config.json")
+#             if not osp.exists(self.output_dir):
+#                 os.makedirs(self.output_dir)
+#             with open(outfile, 'w') as out:
+#                 out.write(output)
+
+#     def save_state(self, state_dict, itr=None):
+#         """
+#         Saves the state of an experiment.
+
+#         To be clear: this is about saving *state*, not logging diagnostics.
+#         All diagnostic logging is separate from this function. This function
+#         will save whatever is in ``state_dict``---usually just a copy of the
+#         environment---and the most recent parameters for the model you 
+#         previously set up saving for with ``setup_tf_saver``. 
+
+#         Call with any frequency you prefer. If you only want to maintain a
+#         single state and overwrite it at each call with the most recent 
+#         version, leave ``itr=None``. If you want to keep all of the states you
+#         save, provide unique (increasing) values for 'itr'.
+
+#         Args:
+#             state_dict (dict): Dictionary containing essential elements to
+#                 describe the current state of training.
+
+#             itr: An int, or None. Current iteration of training.
+#         """
+#         if proc_id()==0:
+#             # modify the filedir
+#             fname = 'pyt_vars/' + 'vars.pkl' if itr is None else 'pyt_vars/' + 'vars_%d.pkl'%itr
+            
+#             if not osp.exists(osp.join(self.output_dir, 'pyt_vars')):
+#                 os.makedirs(osp.join(self.output_dir, 'pyt_vars'))
+#             try:
+#                 joblib.dump(state_dict, osp.join(self.output_dir, fname))
+#             except:
+#                 self.log('Warning: could not pickle state_dict.', color='red')
+#             if hasattr(self, 'tf_saver_elements'):
+#                 self._tf_simple_save(itr)
+#             if hasattr(self, 'pytorch_saver_elements'):
+#                 self._pytorch_simple_save(itr)
+
+#     def setup_tf_saver(self, sess, inputs, outputs):
+#         """
+#         Set up easy model saving for tensorflow.
+
+#         Call once, after defining your computation graph but before training.
+
+#         Args:
+#             sess: The Tensorflow session in which you train your computation
+#                 graph.
+
+#             inputs (dict): A dictionary that maps from keys of your choice
+#                 to the tensorflow placeholders that serve as inputs to the 
+#                 computation graph. Make sure that *all* of the placeholders
+#                 needed for your outputs are included!
+
+#             outputs (dict): A dictionary that maps from keys of your choice
+#                 to the outputs from your computation graph.
+#         """
+#         self.tf_saver_elements = dict(session=sess, inputs=inputs, outputs=outputs)
+#         self.tf_saver_info = {'inputs': {k:v.name for k,v in inputs.items()},
+#                               'outputs': {k:v.name for k,v in outputs.items()}}
+    
+
+#     def setup_pytorch_saver(self, what_to_save):
+#         """
+#         Set up easy model saving for a single PyTorch model.
+
+#         Because PyTorch saving and loading is especially painless, this is
+#         very minimal; we just need references to whatever we would like to 
+#         pickle. This is integrated into the logger because the logger
+#         knows where the user would like to save information about this
+#         training run.
+
+#         Args:
+#             what_to_save: Any PyTorch model or serializable object containing
+#                 PyTorch models.
+#         """
+#         self.pytorch_saver_elements = what_to_save
+
+#     def _pytorch_simple_save(self, itr=None):
+#         """
+#         Saves the PyTorch model (or models).
+#         """
+#         if proc_id()==0:
+#             assert hasattr(self, 'pytorch_saver_elements'), \
+#                 "First have to setup saving with self.setup_pytorch_saver"
+#             fpath = 'pyt_save'
+#             fpath = osp.join(self.output_dir, fpath)
+#             # fpath = osp.join(fpath, state_dict['env'].env_name)
+#             # fpath = fpath + "_" + str(seed)
+#             fname = 'model' + ('_%d'%itr if itr is not None else '') + '.pt'
+#             fname = osp.join(fpath, fname)
+#             os.makedirs(fpath, exist_ok=True)
+#             with warnings.catch_warnings():
+#                 warnings.simplefilter("ignore")
+#                 # We are using a non-recommended way of saving PyTorch models,
+#                 # by pickling whole objects (which are dependent on the exact
+#                 # directory structure at the time of saving) as opposed to
+#                 # just saving network weights. This works sufficiently well
+#                 # for the purposes of Spinning Up, but you may want to do 
+#                 # something different for your personal PyTorch project.
+#                 # We use a catch_warnings() context to avoid the warnings about
+#                 # not being able to save the source code.
+#                 torch.save(self.pytorch_saver_elements, fname)
+
+
+#     def dump_tabular(self):
+#         """
+#         Write all of the diagnostics from the current iteration.
+
+#         Writes both to stdout, and to the output file.
+#         """
+#         if proc_id()==0:
+#             vals = []
+#             key_lens = [len(key) for key in self.log_headers]
+#             max_key_len = max(15,max(key_lens))
+#             keystr = '%'+'%d'%max_key_len
+#             fmt = "| " + keystr + "s | %15s |"
+#             n_slashes = 22 + max_key_len
+#             print("-"*n_slashes)
+#             for key in self.log_headers:
+#                 val = self.log_current_row.get(key, "")
+#                 valstr = "%8.3g"%val if hasattr(val, "__float__") else val
+#                 print(fmt%(key, valstr))
+#                 vals.append(val)
+#             print("-"*n_slashes, flush=True)
+#             if self.output_file is not None:
+#                 if self.first_row:
+#                     self.output_file.write("\t".join(self.log_headers)+"\n")
+#                 self.output_file.write("\t".join(map(str,vals))+"\n")
+#                 self.output_file.flush()
+#         self.log_current_row.clear()
+#         self.first_row=False
+        
+        
 class Logger:
     """
     A general-purpose logger.
@@ -101,19 +321,17 @@ class Logger:
                 hyperparameter configuration with multiple random seeds, you
                 should give them all the same ``exp_name``.)
         """
-        if proc_id()==0:
-            self.output_dir = output_dir or "/tmp/experiments/%i"%int(time.time())
-            if osp.exists(self.output_dir):
-                print("Warning: Log dir %s already exists! Storing info there anyway."%self.output_dir)
-            else:
-                os.makedirs(self.output_dir)
-            self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
-            
-            atexit.register(self.output_file.close)
-            print(colorize("Logging data to %s"%self.output_file.name, 'green', bold=True))
+        
+        self.output_dir = output_dir or "/tmp/experiments/%i"%int(time.time())
+        if osp.exists(self.output_dir):
+            print("Warning: Log dir %s already exists! Storing info there anyway."%self.output_dir)
         else:
-            self.output_dir = None
-            self.output_file = None
+            os.makedirs(self.output_dir)
+        self.output_file = open(osp.join(self.output_dir, output_fname), 'w')
+        
+        atexit.register(self.output_file.close)
+        print(colorize("Logging data to %s"%self.output_file.name, 'green', bold=True))
+        
         self.first_row=True
         self.log_headers = []
         self.log_current_row = {}
@@ -121,8 +339,8 @@ class Logger:
 
     def log(self, msg, color='green'):
         """Print a colorized message to stdout."""
-        if proc_id()==0:
-            print(colorize(msg, color, bold=True))
+        
+        print(colorize(msg, color, bold=True))
 
     def log_tabular(self, key, val):
         """
@@ -159,15 +377,15 @@ class Logger:
         config_json = convert_json(config)
         if self.exp_name is not None:
             config_json['exp_name'] = self.exp_name
-        if proc_id()==0:
-            output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
-            print(colorize('Saving config:\n', color='cyan', bold=True))
-            print(output)
-            outfile = osp.join(self.output_dir, "config.json")
-            if not osp.exists(self.output_dir):
-                os.makedirs(self.output_dir)
-            with open(outfile, 'w') as out:
-                out.write(output)
+        
+        output = json.dumps(config_json, separators=(',',':\t'), indent=4, sort_keys=True)
+        print(colorize('Saving config:\n', color='cyan', bold=True))
+        print(output)
+        outfile = osp.join(self.output_dir, "config.json")
+        if not osp.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+        with open(outfile, 'w') as out:
+            out.write(output)
 
     def save_state(self, state_dict, itr=None):
         """
@@ -190,20 +408,20 @@ class Logger:
 
             itr: An int, or None. Current iteration of training.
         """
-        if proc_id()==0:
-            # modify the filedir
-            fname = 'pyt_vars/' + 'vars.pkl' if itr is None else 'pyt_vars/' + 'vars_%d.pkl'%itr
-            
-            if not osp.exists(osp.join(self.output_dir, 'pyt_vars')):
-                os.makedirs(osp.join(self.output_dir, 'pyt_vars'))
-            try:
-                joblib.dump(state_dict, osp.join(self.output_dir, fname))
-            except:
-                self.log('Warning: could not pickle state_dict.', color='red')
-            if hasattr(self, 'tf_saver_elements'):
-                self._tf_simple_save(itr)
-            if hasattr(self, 'pytorch_saver_elements'):
-                self._pytorch_simple_save(itr)
+        
+        # modify the filedir
+        fname = 'pyt_vars/' + 'vars.pkl' if itr is None else 'pyt_vars/' + 'vars_%d.pkl'%itr
+        
+        if not osp.exists(osp.join(self.output_dir, 'pyt_vars')):
+            os.makedirs(osp.join(self.output_dir, 'pyt_vars'))
+        try:
+            joblib.dump(state_dict, osp.join(self.output_dir, fname))
+        except:
+            self.log('Warning: could not pickle state_dict.', color='red')
+        if hasattr(self, 'tf_saver_elements'):
+            self._tf_simple_save(itr)
+        if hasattr(self, 'pytorch_saver_elements'):
+            self._pytorch_simple_save(itr)
 
     def setup_tf_saver(self, sess, inputs, outputs):
         """
@@ -265,27 +483,27 @@ class Logger:
         """
         Saves the PyTorch model (or models).
         """
-        if proc_id()==0:
-            assert hasattr(self, 'pytorch_saver_elements'), \
-                "First have to setup saving with self.setup_pytorch_saver"
-            fpath = 'pyt_save'
-            fpath = osp.join(self.output_dir, fpath)
-            # fpath = osp.join(fpath, state_dict['env'].env_name)
-            # fpath = fpath + "_" + str(seed)
-            fname = 'model' + ('_%d'%itr if itr is not None else '') + '.pt'
-            fname = osp.join(fpath, fname)
-            os.makedirs(fpath, exist_ok=True)
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                # We are using a non-recommended way of saving PyTorch models,
-                # by pickling whole objects (which are dependent on the exact
-                # directory structure at the time of saving) as opposed to
-                # just saving network weights. This works sufficiently well
-                # for the purposes of Spinning Up, but you may want to do 
-                # something different for your personal PyTorch project.
-                # We use a catch_warnings() context to avoid the warnings about
-                # not being able to save the source code.
-                torch.save(self.pytorch_saver_elements, fname)
+        
+        assert hasattr(self, 'pytorch_saver_elements'), \
+            "First have to setup saving with self.setup_pytorch_saver"
+        fpath = 'pyt_save'
+        fpath = osp.join(self.output_dir, fpath)
+        # fpath = osp.join(fpath, state_dict['env'].env_name)
+        # fpath = fpath + "_" + str(seed)
+        fname = 'model' + ('_%d'%itr if itr is not None else '') + '.pt'
+        fname = osp.join(fpath, fname)
+        os.makedirs(fpath, exist_ok=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            # We are using a non-recommended way of saving PyTorch models,
+            # by pickling whole objects (which are dependent on the exact
+            # directory structure at the time of saving) as opposed to
+            # just saving network weights. This works sufficiently well
+            # for the purposes of Spinning Up, but you may want to do 
+            # something different for your personal PyTorch project.
+            # We use a catch_warnings() context to avoid the warnings about
+            # not being able to save the source code.
+            torch.save(self.pytorch_saver_elements, fname)
 
 
     def dump_tabular(self):
@@ -294,25 +512,25 @@ class Logger:
 
         Writes both to stdout, and to the output file.
         """
-        if proc_id()==0:
-            vals = []
-            key_lens = [len(key) for key in self.log_headers]
-            max_key_len = max(15,max(key_lens))
-            keystr = '%'+'%d'%max_key_len
-            fmt = "| " + keystr + "s | %15s |"
-            n_slashes = 22 + max_key_len
-            print("-"*n_slashes)
-            for key in self.log_headers:
-                val = self.log_current_row.get(key, "")
-                valstr = "%8.3g"%val if hasattr(val, "__float__") else val
-                print(fmt%(key, valstr))
-                vals.append(val)
-            print("-"*n_slashes, flush=True)
-            if self.output_file is not None:
-                if self.first_row:
-                    self.output_file.write("\t".join(self.log_headers)+"\n")
-                self.output_file.write("\t".join(map(str,vals))+"\n")
-                self.output_file.flush()
+        
+        vals = []
+        key_lens = [len(key) for key in self.log_headers]
+        max_key_len = max(15,max(key_lens))
+        keystr = '%'+'%d'%max_key_len
+        fmt = "| " + keystr + "s | %15s |"
+        n_slashes = 22 + max_key_len
+        print("-"*n_slashes)
+        for key in self.log_headers:
+            val = self.log_current_row.get(key, "")
+            valstr = "%8.3g"%val if hasattr(val, "__float__") else val
+            print(fmt%(key, valstr))
+            vals.append(val)
+        print("-"*n_slashes, flush=True)
+        if self.output_file is not None:
+            if self.first_row:
+                self.output_file.write("\t".join(self.log_headers)+"\n")
+            self.output_file.write("\t".join(map(str,vals))+"\n")
+            self.output_file.flush()
         self.log_current_row.clear()
         self.first_row=False
 
@@ -381,7 +599,7 @@ class EpochLogger(Logger):
         else:
             v = self.epoch_dict[key]
             vals = np.concatenate(v) if isinstance(v[0], np.ndarray) and len(v[0].shape)>0 else v
-            stats = mpi_statistics_scalar(vals, with_min_and_max=with_min_and_max)
+            stats = simple_statistics_scalar(vals, with_min_and_max=with_min_and_max)
             super().log_tabular(key if average_only else 'Average' + key, stats[0])
             if not(average_only):
                 super().log_tabular('Std'+key, stats[1])
@@ -396,4 +614,4 @@ class EpochLogger(Logger):
         """
         v = self.epoch_dict[key]
         vals = np.concatenate(v) if isinstance(v[0], np.ndarray) and len(v[0].shape)>0 else v
-        return mpi_statistics_scalar(vals)
+        return simple_statistics_scalar(vals)

@@ -110,9 +110,9 @@ class ImageReplayBuffer:
                  act=self.act_buf[idxs],
                  rew=self.rew_buf[idxs],
                  done=self.done_buf[idxs],
-                 obs_image=self.obs_image_buf[idxs].astype(np.uint8),  # Convert to np.uint8
-                 obs2_image=self.obs2_image_buf[idxs].astype(np.uint8))  # Convert to np.uint8
-        return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) if k not in ['obs_image', 'obs2_image'] else torch.as_tensor(v, dtype=torch.uint8).to(self.device) for k,v in batch.items()}
+                 obs_image=self.obs_image_buf[idxs].astype(np.float32),  # Convert to np.float32
+                 obs2_image=self.obs2_image_buf[idxs].astype(np.float32))  # Convert to np.float32
+        return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) for k,v in batch.items()}
 
 class SAC_ASTAR:
     def __init__(self, 
@@ -255,6 +255,7 @@ class SAC_ASTAR:
                 the current policy and value function.
 
         """ 
+        # TODO: we now take MPI tools out
         self.logger = EpochLogger(**logger_kwargs)
         # save your configuration in a json file
         self.logger.save_config(locals()) 
@@ -595,6 +596,7 @@ class SAC_ASTAR:
         self.logger.dump_tabular()
         
     def add_expert_trajectory_to_buffer(self, o):
+        # Currently not used
         goal = o["desired_goal"]
         input = o["observation"]
         if self.vehicle_type == "one_trailer":
