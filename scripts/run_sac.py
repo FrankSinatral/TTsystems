@@ -90,6 +90,7 @@ def main():
                     pretrained_itr=config_algo['pretrained_itr'],
                     pretrained_dir=config_algo['pretrained_dir'],
                     whether_astar=config_algo['whether_astar'],
+                    astar_ablation=config_algo['astar_ablation'],
                     config=config)
     else:
         # to change the environment, change the env_fn

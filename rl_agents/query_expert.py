@@ -25,6 +25,22 @@ def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer)
     
     return new_control_list
 
+def cyclic_angle_distance(angle1, angle2):
+    return min(abs(angle1 - angle2), 2 * np.pi - abs(angle1 - angle2))
+
+def mixed_norm(goal, final_state):
+    # the input is 6-dim np_array
+    # calculate position sum of square
+    position_diff_square = np.sum((goal[:2] - final_state[:2]) ** 2)
+    
+    # calculate angle distance
+    angle_diff_square = sum([cyclic_angle_distance(goal[i], final_state[i]) ** 2 for i in range(2, 6)])
+    
+    # combine the two distances
+    total_distance = np.sqrt(position_diff_square + angle_diff_square)
+    return total_distance
+
+
 def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
     # Pack every 10 steps to add to buffer
     config_dict = {
@@ -62,7 +78,7 @@ def forward_simulation_one_trailer(input, goal, control_list, simulation_freq):
         transition_list.append(transition)
         state = next_state
     final_state = np.array(controlled_vehicle.state)
-    distance_error = np.linalg.norm(goal - final_state)
+    distance_error = mixed_norm(goal, final_state)
     if distance_error < 0.5:
         print("Accept")
         return transition_list
@@ -107,7 +123,8 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
         transition_list.append(transition)
         state = next_state
     final_state = np.array(controlled_vehicle.state)
-    distance_error = np.linalg.norm(goal - final_state)
+    distance_error = mixed_norm(goal, final_state)
+    # distance_error = np.linalg.norm(goal - final_state)
     if distance_error < 0.5:
         print("Accept")
         return transition_list
@@ -145,7 +162,7 @@ def pack_transition_with_reward(goal, transition_list, obstacles_info=None):
                 pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), 15, True])
         else:
             if obstacles_info is not None:
-                pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), 15, True])
+                pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), -1, False]) # fix a bug
             else:
                 pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
         i += 10

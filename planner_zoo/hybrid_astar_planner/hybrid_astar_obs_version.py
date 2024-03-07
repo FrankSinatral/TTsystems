@@ -79,6 +79,22 @@ def action_recover_to_planner(control_list, simulation_freq=10, v_max=2, max_ste
     
     return new_control_list
 
+def cyclic_angle_distance(angle1, angle2):
+    """calculate the cyclic distance between two angles"""
+    diff = np.abs(angle1 - angle2)
+    return min(diff, 2*np.pi - diff)
+
+def mixed_norm(goal, final_state):
+    # calculate the position component of the periodic square distance
+    position_diff_square = np.sum((goal[:2] - final_state[:2]) ** 2)
+    
+    # calculate the angle component of the periodic square distance
+    angle_diff_square = sum([cyclic_angle_distance(goal[i], final_state[i]) ** 2 for i in range(2, 6)])
+    
+    # calculate the total periodic square distance
+    total_distance = np.sqrt(position_diff_square + angle_diff_square)
+    return total_distance
+
 class RlPath:
     pass
 
@@ -448,7 +464,8 @@ class SingleTractorHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         # Fank: accept(false means not good)
         #       collision(false means no collision)
         #       jack_knife(false means no jack_knife)
@@ -1539,7 +1556,8 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         if distance_error < 0.5:
             info = True
         else:
@@ -1594,7 +1612,8 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         # Fank: accept(false means not good)
         #       collision(false means no collision)
         #       jack_knife(false means no jack_knife)
@@ -3416,7 +3435,8 @@ class TwoTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         if distance_error > self.config["acceptance_error"]:
             info = False
         else:
@@ -3477,7 +3497,8 @@ class TwoTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         # Fank: accept(false means not good)
         #       collision(false means no collision)
         #       jack_knife(false means no jack_knife)
@@ -4992,7 +5013,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         if distance_error > self.config["acceptance_error"]:
             info = False
         else:
@@ -5054,7 +5076,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             
         directions.append(directions[-1])
         final_state = np.array(controlled_vehicle.state)
-        distance_error = np.linalg.norm(goal - final_state)
+        # distance_error = np.linalg.norm(goal - final_state)
+        distance_error = mixed_norm(goal, final_state)
         # Fank: accept(false means not good)
         #       collision(false means no collision)
         #       jack_knife(false means no jack_knife)

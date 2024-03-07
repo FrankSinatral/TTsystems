@@ -625,13 +625,13 @@ class SAC_ASTAR:
                 if self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
                     for transition in pack_transition_list:
                         o, a, o2, r, d = transition
-                        o_image = self.env.unwrapped.reconstruct_image_from_observation(o)
-                        o2_image = self.env.unwrapped.reconstruct_image_from_observation(o2)
-                        self.replay_buffer.store(o, o_image, a.astype(np.float32), r, o2, o2_image, d)
+                        o_image = self.env.unwrapped.reconstruct_image_from_observation(o.astype(np.float32))
+                        o2_image = self.env.unwrapped.reconstruct_image_from_observation(o2.astype(np.float32))
+                        self.replay_buffer.store(o.astype(np.float32), o_image, a.astype(np.float32), r, o2.astype(np.float32), o2_image, d)
                 else:
                     for transition in pack_transition_list:
                             o, a, o2, r, d = transition
-                            self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
+                            self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
             self.add_astar_number += 1
         print("Add to Replay Buffer:", self.add_astar_number)
         
@@ -719,7 +719,7 @@ class SAC_ASTAR:
                 print("Episode Length:", ep_len)
                 if self.whether_astar and not self.astar_ablation:
                     # TODO: change for testing
-                    if self.finish_episode_number % 100 == 0:
+                    if self.finish_episode_number % 20 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
                         # Clear the result
@@ -727,15 +727,16 @@ class SAC_ASTAR:
                         self.add_results_to_buffer(astar_results)
                 elif self.whether_astar and self.astar_ablation:
                     # Only for reaching env
-                    if self.finish_episode_number % 100 == 0:
+                    if self.finish_episode_number % 20 == 0:
                         print("Start Collecting Buffer from Astar(not related to the episode)")
                         # Clear the result at first
                         encounter_start_list = []
-                        for _ in range(100):
-                            o, _ = self.env.reset(seed=(self.big_number + self.count_unrelated_task))
+                        for _ in range(20):
+                            o, _ = self.test_env.reset(seed=(self.big_number + self.count_unrelated_task)) # may need to change to test_env
                             self.count_unrelated_task += 1
                             encounter_start_list.append(o)
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
+                        # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
                         self.add_results_to_buffer(astar_results)
                 o, _ = self.env.reset(seed=(self.seed + t))
                 if self.whether_astar and not self.astar_ablation:

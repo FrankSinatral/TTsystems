@@ -45,6 +45,21 @@ def is_rectangle_intersect(rect1, rect2):
     
     return not (x1_max < x2_min or x2_max < x1_min or y1_max < y2_min or y2_max < y1_min)
 
+def cyclic_angle_distance(angle1, angle2):
+    """计算两个角度之间的周期性距离"""
+    diff = np.abs(angle1 - angle2)
+    return min(diff, 2*np.pi - diff)
+
+def mixed_norm(goal, final_state):
+    # 计算位置分量的平方差
+    position_diff_square = np.sum((goal[:2] - final_state[:2]) ** 2)
+    
+    # 计算角度分量的周期性平方差
+    angle_diff_square = sum([cyclic_angle_distance(goal[i], final_state[i]) ** 2 for i in range(2, 6)])
+    
+    # 计算总距离的平方根
+    total_distance = np.sqrt(position_diff_square + angle_diff_square)
+    return total_distance
 
 
 class TractorTrailerClutteredReachingEnv(Env):
@@ -486,10 +501,11 @@ class TractorTrailerClutteredReachingEnv(Env):
         if goal is None:
             goal = np.array([self.goal], dtype=np.float32)
         # broadcast
-        new_state_diff = state_ - goal
-        new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
+        distance = mixed_norm(goal.squeeze(), state_)
+        # new_state_diff = state_ - goal
+        # new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
         
-        if new_weighted_distance < self.config["sparse_reward_threshold"]:
+        if distance < self.config["sparse_reward_threshold"]:
             reward = self.config['sucess_goal_reward_sparse']
         else:
             reward = -1
@@ -500,10 +516,11 @@ class TractorTrailerClutteredReachingEnv(Env):
         if goal is None:
             goal = np.array([self.goal], dtype=np.float32)
         # broadcast
-        new_state_diff = state_ - goal
-        new_weighted_distance = np.sqrt(np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item())
+        distance = mixed_norm(goal.squeeze(), state_)
+        # new_state_diff = state_ - goal
+        # new_weighted_distance = np.sqrt(np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item())
         
-        if new_weighted_distance < self.config["sparse_reward_threshold"]:
+        if distance < self.config["sparse_reward_threshold"]:
             reward = self.config['sucess_goal_reward_sparse']
         else:
             reward = -1
