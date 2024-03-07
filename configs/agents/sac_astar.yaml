@@ -1,6 +1,6 @@
 algo_name: 'sac_astar'
 seed: 10
-env_name: 'cluttered-reaching-v0'
+env_name: 'cluttered-reaching-v0' # remember to switch script
 sac_steps_per_epoch: 50000
 sac_epochs: 100
 replay_size: 500000 # for cluttered, set to 500000
@@ -13,7 +13,7 @@ start_steps: 1000
 update_after: 1000
 update_every: 2000
 save_freq: 10
-num_test_episodes: 10 # for cluttered env set to 10
+num_test_episodes: 100 # for cluttered env set to 10
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
