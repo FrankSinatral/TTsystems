@@ -638,6 +638,7 @@ class SAC_ASTAR:
         
     def run(self):
         # Prepare for interaction with environment
+        all_start_time = time.time()
         total_steps = self.steps_per_epoch * self.epochs
         # ep_ret: sum over all the rewards of an episode
         # ep_len: calculate the timesteps of an episode
@@ -661,6 +662,25 @@ class SAC_ASTAR:
 
         # Main loop: collect experience in env and update/log each epoch
         for t in range(total_steps):
+            
+            
+            # # test code
+            # # Clear the result at first
+            # encounter_start_list = []
+            # for j in range(30):
+            #     o, _ = self.test_env.reset(seed=j) # may need to change to test_env
+            #     encounter_start_list.append(o)
+            # print("Start Collecting Buffer from Astar(not related to the episode)")
+            # t1 = time.time()
+            # astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
+            # # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
+            # self.add_results_to_buffer(astar_results)
+            # t2 = time.time()
+            # print("done plan:", t2 - t1)
+            # break
+            
+            
+            
             # Until start_steps have elapsed, randomly sample actions
             # from a uniform distribution for better exploration. Afterwards, 
             # use the learned policy. 
@@ -754,15 +774,15 @@ class SAC_ASTAR:
                     self.her_process_episode(temp_buffer)
                     temp_buffer = []
 
-            # Update handling
-            if t >= self.update_after and t % self.update_every == 0:
-                update_start_time = time.time()
-                print("Doing sac update")
-                for j in range(self.update_every):
-                    batch = self.replay_buffer.sample_batch(self.batch_size)
-                    self.update(data=batch, global_step=t)
-                update_end_time = time.time()
-                print("Update time:", update_end_time - update_start_time)
+            # # Update handling
+            # if t >= self.update_after and t % self.update_every == 0:
+            #     print("start update")
+            #     update_start_time = time.time()
+            #     for j in range(self.update_every):
+            #         batch = self.replay_buffer.sample_batch(self.batch_size)
+            #         self.update(data=batch, global_step=t)
+            #     update_end_time = time.time()
+            #     print("done update(update time):", update_end_time - update_start_time)
             # This is evaluate step and save model step
             # End of epoch handling
             if (t+1) % self.steps_per_epoch == 0:
@@ -773,10 +793,18 @@ class SAC_ASTAR:
                     self.save(self.save_model_path +'/model_' + str(t) + '.pth')
                     # pass
                     # self.logger.save_state({'env': self.env}, itr=epoch)
-
+                print("start testing")
+                test_start_time = time.time()
                 # Test the performance of the deterministic version of the agent.
                 self.test_agent(t)
-            print("Timestep:", t)
+                test_end_time = time.time()
+                print("done testing(test time):", test_end_time - test_start_time)
+            if t % 1000 == 0:
+                print("Timestep:", t)
+                print("Total Time:", time.time() - all_start_time)
+            # print("Timestep:", t)
+            if t == 5001:
+                break
                 
         self.save(self.save_model_path +'/model_final.pth')
                 

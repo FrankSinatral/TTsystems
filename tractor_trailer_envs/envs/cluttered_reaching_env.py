@@ -709,6 +709,17 @@ class TractorTrailerClutteredReachingEnv(Env):
     
 
     def render(self):
+        # # test code
+        # # Create a white image of size 84x84 with 3 channels (RGB)
+        # white_image = Image.new('RGB', (84, 84), color = 'white')
+        
+        # # Convert the image to a numpy array and transpose the dimensions
+        # white_image_np = np.array(white_image)
+        # white_image_np_transposed = np.transpose(white_image_np, (2,0,1))
+        
+        # # Return the image
+        # return white_image_np_transposed.astype(np.uint8)
+        # real code
         # assert self.evaluate_mode
         fig, ax = plt.subplots()  # Set the size of the figure
 
@@ -746,6 +757,17 @@ class TractorTrailerClutteredReachingEnv(Env):
         return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.uint8)  # Return the PIL Image object
     
     def reconstruct_image_from_observation(self, observation):
+        
+        # # Create a white image of size 84x84 with 3 channels (RGB)
+        # white_image = Image.new('RGB', (84, 84), color = 'white')
+        
+        # # Convert the image to a numpy array and transpose the dimensions
+        # white_image_np = np.array(white_image)
+        # white_image_np_transposed = np.transpose(white_image_np, (2,0,1))
+        
+        # # Return the image
+        # return white_image_np_transposed.astype(np.float32)
+        
         # a helper fuction that helps to reconstruct the image from the full-dim(26) observation
         # [x1, x2, y1, y2, x1, x2, y1, y2, ...] -> image
         start = observation[:6]
@@ -788,7 +810,8 @@ class TractorTrailerClutteredReachingEnv(Env):
         rgb_img = resized_img.convert('RGB')
 
         # Save the image
-        rgb_img.save("runs_rl/tractor_trailer_envs2.png")
+        # rgb_img.save("runs_rl/tractor_trailer_envs2.png")
+        # rgb_img.save("runs_rl/tractor_trailer_envs3.png")
 
         buf.close()
         plt.close(fig) # close the current figure window
