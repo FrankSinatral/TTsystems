@@ -21,6 +21,7 @@ import yaml
 from tractor_trailer_envs import register_tt_envs
 register_tt_envs()
 from rl_agents.sac.sac_astar import find_expert_trajectory
+import planner_zoo.hybrid_astar_planner.hybrid_astar_test_version as alg_test
 
 
 def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer):
@@ -507,6 +508,127 @@ def process_failed_o(failed_o):
     transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
     return transition_list is None
 
+def pack_transition_with_reward(goal, transition_list, obstacles_info=None):
+    # for rl training
+    # add reward every 10 steps
+    
+    pack_transition_list = []
+    i = 0
+    while i < len(transition_list):
+        state, action, _ = transition_list[i]
+        next_state_index = min(i + 9, len(transition_list) - 1)
+        _, _, next_state = transition_list[next_state_index]
+        if i == len(transition_list) - 10:
+            #pack mamually with reward
+            if obstacles_info is not None:
+                pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), 15, True])
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), 15, True])
+        else:
+            if obstacles_info is not None:
+                pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), -1, False]) # fix a bug
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
+        i += 10
+    return pack_transition_list
+
+def find_expert_trajectory(o):
+    goal = o["desired_goal"]
+    input = o["observation"]
+    try:
+        obstacles_info = o["obstacles_info"]
+    except:
+        obstacles_info = None
+    
+    pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info)
+    return pack_transition_list
+    
+def query_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
+    # fixed to 6-dim
+    transition_list = generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info)
+    if transition_list is not None:
+        pack_transition_list = pack_transition_with_reward(goal, transition_list, obstacles_info)
+    else:
+        return None
+    return pack_transition_list
+
+def restore_obstacles_info(flattened_info):
+    # Reshape the flattened array to have 4 columns (for x_min, x_max, y_min, y_max)
+    reshaped_info = flattened_info.reshape(-1, 4)
+    
+    # Restore the original obstacle_info format
+    obstacle_info = [[(x_min, y_min), (x_min, y_max), (x_max, y_max), (x_max, y_min)] 
+                     for x_min, x_max, y_min, y_max in reshaped_info]
+    return obstacle_info
+
+def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
+    Map = tt_envs.MapBound(map_env)
+    
+    ox_map, oy_map = Map.sample_surface(0.1)
+    ox = ox_map
+    oy = oy_map
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    if obstacles_info is not None:
+        obstacles_info = restore_obstacles_info(obstacles_info)
+        if obstacles_info is not None:
+            for rectangle in obstacles_info:
+                obstacle = tt_envs.QuadrilateralObstacle(rectangle)
+                ox_obs, oy_obs = obstacle.sample_surface(0.1)
+                ox += ox_obs
+                oy += oy_obs
+            
+    config = {
+       "plot_final_path": False,
+       "plot_rs_path": True,
+       "plot_expand_tree": True,
+       "mp_step": 10,
+       "N_steps": 10,
+       "range_steer_set": 20,
+       "max_iter": 50,
+       "controlled_vehicle_config": {
+                "w": 2.0, #[m] width of vehicle
+                "wb": 3.5, #[m] wheel base: rear to front steer
+                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                "rf": 4.5, #[m] distance from rear to vehicle front end
+                "rb": 1.0, #[m] distance from rear to vehicle back end
+                "tr": 0.5, #[m] tyre radius
+                "tw": 1.0, #[m] tyre width
+                "rtr": 2.0, #[m] rear to trailer wheel
+                "rtf": 1.0, #[m] distance from rear to trailer front end
+                "rtb": 3.0, #[m] distance from rear to trailer back end
+                "rtr2": 2.0, #[m] rear to second trailer wheel
+                "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                "rtr3": 2.0, #[m] rear to third trailer wheel
+                "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                "max_steer": 0.6, #[rad] maximum steering angle
+                "v_max": 2.0, #[m/s] maximum velocity 
+                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                "xi_max": (np.pi) / 4, # jack-knife constraint  
+            },
+       "acceptance_error": 0.5,
+    }
+    # three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    three_trailer_planner = alg_test.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    if control_list is not None:
+        control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
+        transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+    else:
+        return None
+    return transition_list
+
 def vis_results(results, env):
     # only add reconstruct for requiring image
     for pack_transition_list in results:
@@ -520,41 +642,57 @@ def vis_results(results, env):
     
 if __name__ == "__main__":
     
-    
+    with open('planner_result/failed_result_0.pkl', 'rb') as f:
+        datas = pickle.load(f)
+    goal_with_obstacles_info_list = []
+    # for i in range(len(datas)):
+    data = datas[1]
+    goal = data["goal"]
+    obstacles_info = data["obstacles_info"]
+    goal_with_obstacles_info = {
+        "goal": goal,
+        "obstacles_info": obstacles_info
+    }
+    goal_with_obstacles_info_list.append(goal_with_obstacles_info)
     with open("configs/envs/cluttered_reaching_v0_eval.yaml", 'r') as file:
         config = yaml.safe_load(file)
     # env = tt_envs.TractorTrailerParkingEnv(config)
     env = gym.make("tt-cluttered-reaching-v0", config=config)
-    start_lists = []
-    # Initialize an empty list to store the starting observations
-    start_lists = []
-
-    # The number of observations per file
-    obs_per_file = 10000
-
-    # The total number of observations
-    total_obs = 200000
-
-    # The number of files
-    num_files = total_obs // obs_per_file
-    directory = 'planner_result/datas'
-    os.makedirs(directory, exist_ok=True)
+    env.unwrapped.update_goal_with_obstacles_info_list(goal_with_obstacles_info_list)
+    obs, _ = env.reset()
+    find_expert_trajectory(obs)
+    print(1)
     
-    for i in range(num_files):
-        # Generate the observations for this file
-        for j in range(i * obs_per_file, (i + 1) * obs_per_file):
-            obs, _ = env.reset(seed = j)
-            start_lists.append(obs)
+    # start_lists = []
+    # # Initialize an empty list to store the starting observations
+    # start_lists = []
 
-        # Find the expert trajectories for the observations
-        results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(obs, "three_trailer") for obs in start_lists)
+    # # The number of observations per file
+    # obs_per_file = 10000
 
-        # Save the results to a file
-        with open(f'{directory}/data{i+1}.pickle', 'wb') as f:
-            pickle.dump(results, f)
+    # # The total number of observations
+    # total_obs = 200000
 
-        # Clear the list of starting observations for the next file
-        start_lists.clear()
+    # # The number of files
+    # num_files = total_obs // obs_per_file
+    # directory = 'planner_result/datas'
+    # os.makedirs(directory, exist_ok=True)
+    
+    # for i in range(num_files):
+    #     # Generate the observations for this file
+    #     for j in range(i * obs_per_file, (i + 1) * obs_per_file):
+    #         obs, _ = env.reset(seed = j)
+    #         start_lists.append(obs)
+
+    #     # Find the expert trajectories for the observations
+    #     results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(obs, "three_trailer") for obs in start_lists)
+
+    #     # Save the results to a file
+    #     with open(f'{directory}/data{i+1}.pickle', 'wb') as f:
+    #         pickle.dump(results, f)
+
+    #     # Clear the list of starting observations for the next file
+    #     start_lists.clear()
      
     
     
