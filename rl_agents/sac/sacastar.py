@@ -201,6 +201,7 @@ class SACASTAR:
         # Instantiate environment
         if self.env_name == "standard_parking":
             # Fank: register only once the highway_env
+            # Now seldom use this env
             from highway_env import register_highway_envs
             register_highway_envs()
             self.env, self.test_env = env_fn(), env_fn() # using gym to instantiate env
@@ -225,9 +226,9 @@ class SACASTAR:
             self.env, self.test_env = env_fn(config), env_fn(config)
             self.state_dim = self.env.observation_space['observation'].shape[0]
             if self.env_name.startswith("cluttered"):
-                self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 8,), np.float64)
+                self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 8,), np.float32)
             else:
-                self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float64)
+                self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float32)
             self.obs_dim = self.box.shape
             self.act_dim = self.env.action_space.shape[0]
             # Action limit for clamping: critically, assumes all dimensions share the same bound!
@@ -510,25 +511,6 @@ class SACASTAR:
         self.logger.log_tabular('total_timesteps', with_min_and_max=False, average_only=True)
         self.logger.dump_tabular()
         
-    def add_results_to_buffer(self, results):
-        # only add reconstruct for requiring image
-        for pack_transition_list in results:
-            if pack_transition_list is None:
-                pass
-            else:
-                if self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-                    for transition in pack_transition_list:
-                        o, a, o2, r, d = transition
-                        o_image = self.env.unwrapped.reconstruct_image_from_observation(o.astype(np.float32))
-                        o2_image = self.env.unwrapped.reconstruct_image_from_observation(o2.astype(np.float32))
-                        self.replay_buffer.store(o.astype(np.float32), o_image, a.astype(np.float32), r, o2.astype(np.float32), o2_image, d)
-                else:
-                    for transition in pack_transition_list:
-                            o, a, o2, r, d = transition
-                            self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
-            self.add_astar_number += 1
-        print("Add to Replay Buffer:", self.add_astar_number)
-        
     def update_process(self):
         print("start update")
         update_start_time = time.time()
@@ -587,7 +569,9 @@ class SACASTAR:
             if (self.total_timesteps + 1) % self.steps_per_epoch == 0:
                 self.save_and_evaluate()
             
-            
+            # can exit just like astar do 
+            if self.total_timesteps >= self.steps_per_epoch * self.epochs:
+                return
             
             # check whether the episode is terminated or truncated:
             if terminated or truncated:
@@ -617,7 +601,7 @@ class SACASTAR:
                 lists_for_planning.append(o)
             print("Start Collecting Rollouts from Astar (random tasks)")
         
-        
+        # Running planning tasks using joblib
         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in lists_for_planning)
         # substitude for debugging
         # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in lists_for_planning]
@@ -663,11 +647,6 @@ class SACASTAR:
         exit_loop = False
         assert self.with_env_number > 0 or self.with_astar_number > 0, "One Should Beyond 0"
         while True:
-            if self.align_with_env:
-                lists_for_planning = self.collect_lists_for_planning(self.seed_number_with_astar, self.with_astar_number)
-                self.seed_number_with_astar += self.with_astar_number
-            else: 
-                lists_for_planning = None
             if self.with_env_number > 0:
                 for _ in range(self.with_env_number):
                     self.collect_rollout_with_env(self.seed_number_with_env)
@@ -679,6 +658,11 @@ class SACASTAR:
                 if exit_loop:
                     break
             if self.with_astar_number > 0:
+                if self.align_with_env:
+                    lists_for_planning = self.collect_lists_for_planning(self.seed_number_with_astar, self.with_astar_number)
+                    self.seed_number_with_astar += self.with_astar_number
+                else: 
+                    lists_for_planning = None
                 self.collect_rollout_with_astar(lists_for_planning, self.with_astar_number)
                 if self.total_timesteps >= self.steps_per_epoch * self.epochs:
                     print("Reaching Maximum Steps")
