@@ -20,7 +20,7 @@ def get_current_time_format():
 
 def main():
     # the script is only used for cluttered reaching
-    with open("configs/envs/cluttered_reaching_v0.yaml", 'r') as file:
+    with open("configs/envs/reaching_v0.yaml", 'r') as file:
         config = yaml.safe_load(file)
     # TODO: change the config to sacastar
     with open("configs/agents/sacastar.yaml", 'r') as file:
