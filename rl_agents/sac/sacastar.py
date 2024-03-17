@@ -43,7 +43,7 @@ def find_expert_trajectory(o, vehicle_type):
         "plot_final_path": False,
         "plot_rs_path": False,
         "plot_expand_tree": False,
-        "mp_step": 12,
+        "mp_step": 12, # Important
         "N_steps": 20, # Important
         "range_steer_set": 20,
         "max_iter": 50,
