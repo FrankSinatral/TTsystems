@@ -45,7 +45,6 @@ def extract_rs_path_control(rspath, max_steer, maxc, N_step=10, max_step_size=0.
     max_step_size: the maximun step_size taken
     Note that this is irrelevant to vehicle type agnostic
     """
-    # TODO: here steps is very important
     rscontrol_list = []
     for ctype, length in zip(rspath.ctypes, rspath.lengths):
         if ctype == 'S':
@@ -63,7 +62,6 @@ def extract_rs_path_control(rspath, max_steer, maxc, N_step=10, max_step_size=0.
 
 def action_recover_from_planner(control_list, simulation_freq=10, v_max=2, max_steer=0.6):
     # this shift is for rl api
-    # transform the action to [-1, 1]
     new_control_list = []
     for control in control_list:
         new_control = np.array([control[0] * simulation_freq / v_max, control[1] / max_steer])
@@ -136,7 +134,7 @@ class SingleTractorHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "max_iter": 1000, # outer loop number
             "step_size": 0.2, # rs path step size
             "move_step": 0.2, # expand tree how many distance to move
-            "mp_step": 40.0, # previous 2.0 * reso
+            "mp_step": 10, # previous 2.0 * reso
             "is_save_animation": True,
             "is_save_expand_tree": True,
             "visualize_mode": True,
@@ -4346,7 +4344,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     "gear_cost": 100.0,
                     "backward_cost": 5.0,
                     "steer_change_cost": 5.0,
-                    "h_cost": 10.0,
+                    "h_cost": 1,
                     "steer_angle_cost": 1.0,
                 },   
             
@@ -4358,7 +4356,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "plot_failed_path": False,
             "range_steer_set": 8, #need to set the same as n_steer
             "acceptance_error": 0.5,
-            "N_steps": 20,
+            "pack_action": 10,
         }
     
     def configure(self, config: Optional[dict]):
@@ -4647,9 +4645,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
     
     def calc_hybrid_cost_simplify(self, n_curr, n_goal, rscost):
         heuristic_non_holonomic = rscost
-        heuristic_holonomic_obstacles = self.hmap[n_curr.xind - self.P.minx][n_curr.yind - self.P.miny]
         cost = n_curr.cost + \
-             self.cost["h_cost"] * max(heuristic_non_holonomic, heuristic_holonomic_obstacles)
+             self.cost["h_cost"] * heuristic_non_holonomic
 
         return cost
     
@@ -4688,7 +4685,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # step = self.xyreso * 2.0
 
         nlist = math.ceil(step / self.config["move_step"])
-        assert nlist % self.config["N_steps"] == 0, "nlist should be divisible by N_steps"
         xlist = [n.x[-1] + d * self.config["move_step"] * math.cos(n.yaw[-1])]
         ylist = [n.y[-1] + d * self.config["move_step"] * math.sin(n.yaw[-1])]
         yawlist = [self.pi_2_pi(n.yaw[-1] + d * self.config["move_step"] / self.vehicle.WB * math.tan(u))]
@@ -4721,25 +4717,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
         if d > 0:
             direction = 1.0
-            cost += abs(step)
         else:
             direction = -1.0
-            cost += abs(step) * self.cost["backward_cost"]
-
-        if direction != n.direction:  # switch back penalty
-            cost += self.cost["gear_cost"]
-
-        cost += self.cost["steer_angle_cost"] * abs(u)  # steer penalyty
-        cost += self.cost["steer_change_cost"] * abs(n.steer - u)  # steer change penalty
-        # may need to cancel this
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawlist, yawt1list)])  # jacknif cost
-        # I add a term
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawt1list, yawt2list)])
         
-        cost += self.cost["scissors_cost"] * sum([abs(self.pi_2_pi(x - y))
-                                    for x, y in zip(yawt2list, yawt3list)])
+        cost += len(xlist) / self.config["pack_action"]
         
         cost = n.cost + cost
 
@@ -4925,7 +4906,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         paths = curves_generator.generate_path(q0, q1, maxc)
 
         for path in paths:
-            rscontrol_list = extract_rs_path_control(path, self.vehicle.MAX_STEER, maxc, N_step=self.config["N_steps"], max_step_size=self.config["step_size"])
+            rscontrol_list = extract_rs_path_control(path, self.vehicle.MAX_STEER, maxc)
             control_list = action_recover_from_planner(rscontrol_list)
             path.x, path.y, path.yaw, path.yawt1, path.yawt2, path.yawt3, path.directions, path.info = self.forward_simulation_three_trailer_modify(input, goal, control_list)
             path.lengths = [l / maxc for l in path.lengths]
@@ -4933,10 +4914,15 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             # add rscontrollist once search the path
             path.rscontrollist = rscontrol_list
             # put calc_rs_cost_here
-            path.rscost = self.calc_rs_path_cost_three_trailer_modify(path)
+            path.rscost = len(rscontrol_list) / self.config["pack_action"]
             path.stepcost = len(path.x)
+            if path.info["collision"]:
+                path.rscost += 20
+            if path.info["jack_knife"]:
+                path.rscost += 20
             # Fank: check here if there is jack_knife
             if path.info["accept"] and (not path.info["collision"]) and (not path.info["jack_knife"]):    
+                path.rscost -= 16 # manually design
                 xind = round(path.x[-1] / self.xyreso)
                 yind = round(path.y[-1] / self.xyreso)
                 yawind = round(path.yaw[-1] / self.yawreso)

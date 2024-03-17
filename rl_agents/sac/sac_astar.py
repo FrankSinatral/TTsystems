@@ -32,17 +32,50 @@ from PIL import Image
 import io
 
 def find_expert_trajectory(o, vehicle_type):
-        goal = o["desired_goal"]
-        input = o["observation"]
-        try:
-            obstacles_info = o["obstacles_info"]
-        except:
-            obstacles_info = None
-        if vehicle_type == "one_trailer":
-            pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
-        elif vehicle_type == "three_trailer":
-            pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info)
-        return pack_transition_list
+    goal = o["desired_goal"]
+    input = o["observation"]
+    try:
+        obstacles_info = o["obstacles_info"]
+    except:
+        obstacles_info = None
+        
+    config = {
+        "plot_final_path": False,
+        "plot_rs_path": False,
+        "plot_expand_tree": False,
+        "mp_step": 12,
+        "N_steps": 20, # Important
+        "range_steer_set": 20,
+        "max_iter": 50,
+        "controlled_vehicle_config": {
+                    "w": 2.0, #[m] width of vehicle
+                    "wb": 3.5, #[m] wheel base: rear to front steer
+                    "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                    "rf": 4.5, #[m] distance from rear to vehicle front end
+                    "rb": 1.0, #[m] distance from rear to vehicle back end
+                    "tr": 0.5, #[m] tyre radius
+                    "tw": 1.0, #[m] tyre width
+                    "rtr": 2.0, #[m] rear to trailer wheel
+                    "rtf": 1.0, #[m] distance from rear to trailer front end
+                    "rtb": 3.0, #[m] distance from rear to trailer back end
+                    "rtr2": 2.0, #[m] rear to second trailer wheel
+                    "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                    "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                    "rtr3": 2.0, #[m] rear to third trailer wheel
+                    "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                    "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                    "max_steer": 0.6, #[rad] maximum steering angle
+                    "v_max": 2.0, #[m/s] maximum velocity 
+                    "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                    "xi_max": (np.pi) / 4, # jack-knife constraint  
+                },
+        "acceptance_error": 0.5,
+        }
+    if vehicle_type == "one_trailer":
+        pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
+    elif vehicle_type == "three_trailer":
+        pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info, config)
+    return pack_transition_list
 
 class ReplayBuffer:
     """
@@ -667,13 +700,13 @@ class SAC_ASTAR:
             # # test code
             # # Clear the result at first
             # encounter_start_list = []
-            # for j in range(30):
+            # for j in range(2):
             #     o, _ = self.test_env.reset(seed=j) # may need to change to test_env
             #     encounter_start_list.append(o)
             # print("Start Collecting Buffer from Astar(not related to the episode)")
             # t1 = time.time()
-            # astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
-            # # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
+            # # astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
+            # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
             # self.add_results_to_buffer(astar_results)
             # t2 = time.time()
             # print("done plan:", t2 - t1)
@@ -737,9 +770,10 @@ class SAC_ASTAR:
                 self.finish_episode_number += 1
                 print("Finish Episode number:", self.finish_episode_number)
                 print("Episode Length:", ep_len)
+                # Two Strategy for astar
                 if self.whether_astar and not self.astar_ablation:
                     # TODO: change for testing
-                    if self.finish_episode_number % 20 == 0: # put this number smaller
+                    if self.finish_episode_number % 50 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
                         # Clear the result
@@ -747,7 +781,7 @@ class SAC_ASTAR:
                         self.add_results_to_buffer(astar_results)
                 elif self.whether_astar and self.astar_ablation:
                     # Only for reaching env
-                    if self.finish_episode_number % 20 == 0:
+                    if self.finish_episode_number % 50 == 0:
                         print("Start Collecting Buffer from Astar(not related to the episode)")
                         # Clear the result at first
                         encounter_start_list = []
@@ -758,33 +792,34 @@ class SAC_ASTAR:
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
                         # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
                         self.add_results_to_buffer(astar_results)
-                o, _ = self.env.reset(seed=(self.seed + t))
-                if self.whether_astar and not self.astar_ablation:
-                    encounter_start_list.append(o)
-                episode_start_time = time.time()
-                # if self.whether_astar:
-                #     # try:
-                #     #     self.add_expert_trajectory_to_buffer(o)
-                #     # except:
-                #     #     pass
-                #     add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
-                #     add_thread.start()
-                ep_ret, ep_len = 0, 0
-                if self.whether_her:
-                    self.her_process_episode(temp_buffer)
-                    temp_buffer = []
+            o, _ = self.env.reset(seed=(self.seed + t))
+            if self.whether_astar and not self.astar_ablation:
+                encounter_start_list.append(o)
+            episode_start_time = time.time()
+            # if self.whether_astar:
+            #     # try:
+            #     #     self.add_expert_trajectory_to_buffer(o)
+            #     # except:
+            #     #     pass
+            #     add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
+            #     add_thread.start()
+            ep_ret, ep_len = 0, 0
+            if self.whether_her:
+                self.her_process_episode(temp_buffer)
+                temp_buffer = []
+            
 
-            # # Update handling
-            # if t >= self.update_after and t % self.update_every == 0:
-            #     print("start update")
-            #     update_start_time = time.time()
-            #     for j in range(self.update_every):
-            #         batch = self.replay_buffer.sample_batch(self.batch_size)
-            #         self.update(data=batch, global_step=t)
-            #     update_end_time = time.time()
-            #     print("done update(update time):", update_end_time - update_start_time)
+            # Update handling
+            if t >= self.update_after and t % self.update_every == 0:
+                print("start update")
+                update_start_time = time.time()
+                for j in range(self.update_every):
+                    batch = self.replay_buffer.sample_batch(self.batch_size)
+                    self.update(data=batch, global_step=t)
+                update_end_time = time.time()
+                print("done update(update time):", update_end_time - update_start_time)
+            
             # This is evaluate step and save model step
-            # End of epoch handling
             if (t+1) % self.steps_per_epoch == 0:
                 epoch = (t+1) // self.steps_per_epoch
 
@@ -799,12 +834,12 @@ class SAC_ASTAR:
                 self.test_agent(t)
                 test_end_time = time.time()
                 print("done testing(test time):", test_end_time - test_start_time)
-            if t % 1000 == 0:
-                print("Timestep:", t)
-                print("Total Time:", time.time() - all_start_time)
-            # print("Timestep:", t)
-            if t == 5001:
-                break
+            # if t % 1000 == 0:
+            #     print("Timestep:", t)
+            #     print("Total Time:", time.time() - all_start_time)
+            # # print("Timestep:", t)
+            # if t == 5001:
+            #     break
                 
         self.save(self.save_model_path +'/model_final.pth')
                 
