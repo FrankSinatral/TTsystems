@@ -665,24 +665,27 @@ class TractorTrailerClutteredReachingEnv(Env):
 
         return obs_dict, reward, self.terminated, self.truncated, info_dict
 
-    # def render(self, mode='human'):
-    #     assert self.evaluate_mode
-    #     plt.cla()
-    #     ax = plt.gca()
-    #     plt.plot(self.ox, self.oy, 'sk', markersize=1)
-    #     # plt.plot(ox_, oy_, 'sk', markersize=0.5)
-    #     self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue')
+    def real_render(self, mode='human'):
+        assert self.evaluate_mode
+        plt.cla()
+        ax = plt.gca()
+        plt.plot(self.ox, self.oy, 'sk', markersize=1)
+        # plt.plot(ox_, oy_, 'sk', markersize=0.5)
+        try:
+            self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue')
+        except:
+            self.controlled_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
         
-    #     # Plot the goal vehicle
-    #     gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
-    #     self.plot_vehicle = deepcopy(self.controlled_vehicle)
-    #     self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
-    #     self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
-    #     plt.axis('equal')
-    #     plt.savefig("runs_rl/tractor_trailer_envs.png")
-    #     print(1)
+        # Plot the goal vehicle
+        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
+        self.plot_vehicle = deepcopy(self.controlled_vehicle)
+        self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        plt.axis('equal')
+        plt.savefig("runs_rl/tractor_trailer_envs.png")
+        print(1)
     
-    # def render(self, mode='human'):
+    # def real_render(self, mode='human'):
     #     assert self.evaluate_mode
     #     # plt.cla()
     #     fig, ax = plt.subplots()
@@ -692,8 +695,10 @@ class TractorTrailerClutteredReachingEnv(Env):
     #     plt.plot(map_x, map_y, 'r-')  # Plot the boundaries in red
 
     #     # Plot the controlled vehicle
-    #     self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue', is_full=True)
-
+    #     try:
+    #         self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue', is_full=True)
+    #     except:
+            
     #     # Plot the goal vehicle
     #     gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
     #     self.plot_vehicle = deepcopy(self.controlled_vehicle)
@@ -749,12 +754,14 @@ class TractorTrailerClutteredReachingEnv(Env):
         rgb_img = resized_img.convert('RGB')
 
         # Save the image
-        # rgb_img.save("runs_rl/tractor_trailer_envs.png")
+        # rgb_img.save("runs_rl/tractor_trailer_envs5.png")
 
         buf.close()
         plt.close(fig) # close the current figure window
 
         return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.uint8)  # Return the PIL Image object
+        # return np.array(rgb_img).astype(np.uint8)  # Return the PIL Image object
+        
     
     def reconstruct_image_from_observation(self, observation):
         
@@ -811,7 +818,7 @@ class TractorTrailerClutteredReachingEnv(Env):
 
         # Save the image
         # rgb_img.save("runs_rl/tractor_trailer_envs2.png")
-        # rgb_img.save("runs_rl/tractor_trailer_envs3.png")
+        # rgb_img.save("runs_rl/tractor_trailer_envs4.png")
 
         buf.close()
         plt.close(fig) # close the current figure window
