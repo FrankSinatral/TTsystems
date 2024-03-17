@@ -1,6 +1,6 @@
 algo_name: 'sac_astar'
 seed: 10
-env_name: 'reaching-v0' # remember to switch script
+env_name: 'cluttered-reaching-v0' # remember to switch script
 sac_steps_per_epoch: 50000
 sac_epochs: 100
 replay_size: 1000000 # for cluttered, set to 500000
@@ -21,8 +21,11 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: False
 use_auto: True
-whether_astar: true
-astar_ablation: false # true stands for ablation study
+
+
+with_env_number: -1 # -1 means not interacting with env
+with_astar_number: 1000 # -1 means not using astar
+align_with_env: True # whether env and astar solve the same task
 
 pretrained: False
 pretrained_itr: 2499999
