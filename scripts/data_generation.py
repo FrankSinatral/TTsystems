@@ -22,7 +22,21 @@ from tractor_trailer_envs import register_tt_envs
 register_tt_envs()
 from rl_agents.sac.sac_astar import find_expert_trajectory
 import planner_zoo.hybrid_astar_planner.hybrid_astar_test_version as alg_test
+def cyclic_angle_distance(angle1, angle2):
+    """calculate the cyclic distance between two angles"""
+    diff = np.abs(angle1 - angle2)
+    return min(diff, 2*np.pi - diff)
 
+def mixed_norm(goal, final_state):
+    # calculate the position component of the periodic square distance
+    position_diff_square = np.sum((goal[:2] - final_state[:2]) ** 2)
+    
+    # calculate the angle component of the periodic square distance
+    angle_diff_square = sum([cyclic_angle_distance(goal[i], final_state[i]) ** 2 for i in range(2, 6)])
+    
+    # calculate the total periodic square distance
+    total_distance = np.sqrt(position_diff_square + angle_diff_square)
+    return total_distance
 
 def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer):
     # this shift is for rl api
@@ -115,7 +129,8 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
         transition_list.append(transition)
         state = next_state
     final_state = np.array(controlled_vehicle.state)
-    distance_error = np.linalg.norm(goal - final_state)
+    # distance_error = np.linalg.norm(goal - final_state)
+    distance_error = mixed_norm(goal, final_state)
     if distance_error < 0.5:
         print("Accept")
         return transition_list
@@ -508,17 +523,17 @@ def process_failed_o(failed_o):
     transition_list = generate_using_hybrid_astar_three_trailer(input, goal)
     return transition_list is None
 
-def pack_transition_with_reward(goal, transition_list, obstacles_info=None):
+def pack_transition_with_reward(goal, transition_list, obstacles_info=None, N_steps=10):
     # for rl training
     # add reward every 10 steps
-    
+    assert len(transition_list) % N_steps == 0, "The length of transition list should be a multiple of N_steps"
     pack_transition_list = []
     i = 0
     while i < len(transition_list):
         state, action, _ = transition_list[i]
-        next_state_index = min(i + 9, len(transition_list) - 1)
+        next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
         _, _, next_state = transition_list[next_state_index]
-        if i == len(transition_list) - 10:
+        if i == len(transition_list) - N_steps:
             #pack mamually with reward
             if obstacles_info is not None:
                 pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), 15, True])
@@ -529,7 +544,7 @@ def pack_transition_with_reward(goal, transition_list, obstacles_info=None):
                 pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), -1, False]) # fix a bug
             else:
                 pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
-        i += 10
+        i += N_steps
     return pack_transition_list
 
 def find_expert_trajectory(o):
@@ -589,7 +604,7 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
        "N_steps": 10,
        "range_steer_set": 20,
        "max_iter": 50,
-       "heuristic_type": "rl",
+       "heuristic_type": "mix",
        "controlled_vehicle_config": {
             "w": 2.0, #[m] width of vehicle
             "wb": 3.5, #[m] wheel base: rear to front steer
@@ -668,9 +683,9 @@ if __name__ == "__main__":
     with open("configs/envs/reaching_v0_eval.yaml", 'r') as file:
         config = yaml.safe_load(file)
     env = gym.make("tt-reaching-v0", config=config)
-    obs, _ = env.reset()
-    find_expert_trajectory(obs)
-    print(1)
+    obs, _ = env.reset(seed=50)
+    pack_transition_list = find_expert_trajectory(obs)
+    print(len(pack_transition_list))
     
     
     # start_lists = []

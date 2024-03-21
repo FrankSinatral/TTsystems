@@ -4384,7 +4384,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         else:
             self.qp = hyastar.QueuePrior()
             
-        if self.heuristic_type == 'rl':
+        if self.heuristic_type == 'rl' or self.heuristic_type == 'mix':
             self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
             with open("configs/agents/sac_astar.yaml", 'r') as file:
                 config_algo = yaml.safe_load(file)
@@ -5254,11 +5254,14 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             find_feasible = False
             return find_feasible, path
     
-    def extract_path_and_control(self, closed, ngoal, nstart, reverse=False, find_rs_path=True):
+    def extract_path_and_control(self, closed, ngoal, nstart, reverse=False, find_rs_path=True, find_rl_path=True):
         """
         extract the path before rs path
         notice that there will be some unavoidable mistakes
         - find_rs_path: whether we find rs path (always yes)
+        return:
+        all the path point
+        and all the control before rs path or rl path
         """
         rx, ry, ryaw, ryawt1, ryawt2, ryawt3, direc = [], [], [], [], [], [], []
         expand_control_list = []
@@ -5282,7 +5285,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
 
             if self.is_the_start(node, nstart) and self.is_same_grid(node, nstart):
                 break
-            if find_rs_path:
+            if find_rs_path or find_rl_path:
                 if count > 0: #which means this is definitely not rs path
                     for i in range(nlist):
                         expand_control_list.append(np.array([node.directions[-1] * self.step_size, node.steer]))       
@@ -5762,6 +5765,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         self.qp.reset()
         # an indicator whether find the rs path at last(for extract)
         find_rs_path = False
+        # an indicator whether find the rl path at last(for extract)
+        find_rl_path = False
         # the loop number for analystic expansion(counting number)
         count = 0
         # update parameter
@@ -5784,11 +5789,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     plt.close() 
                     # plt.close()
                 if verbose:
-                    print("find path at first time")
+                    print("find path at first time via rs path")
                 closed_set[self.calc_index(nstart)] = nstart
             else:
-                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rscost))
-        else:
+                self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rscost)) 
+        elif self.heuristic_type == "rl":
             # TODO wait for RL to guide search
             t1 = time.time()
             find_feasible, path = self.rl_gear(nstart, ngoal)
@@ -5806,12 +5811,50 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     plt.savefig("runs_rl/savefig.png")
                     plt.close()
                 if verbose:
-                    print("find path at first time")
+                    print("find path at first time via rl path")
                 closed_set[self.calc_index(nstart)] = nstart
             else:
                 # cost_qp = self.calc_euclidean_distance(nstart, ngoal)
                 # self.qp.put(self.calc_index(nstart), cost_qp)
                 self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
+        else:
+            # Fank: Mixture of two gears
+            find_feasible, path = self.rl_gear(nstart, ngoal)
+            if find_feasible:
+                fnode = path.info["final_node"]
+                find_rl_path = True
+                update = find_feasible
+                rl_path = path
+                rl_control_list = path.rlcontrollist
+                if self.config["plot_expand_tree"]:
+                    plot_rs_path(rl_path, self.ox, self.oy)
+                    self.plot_expand_tree(start, goal, closed_set, open_set)
+                    plt.savefig("runs_rl/savefig.png")
+                    plt.close()
+                if verbose:
+                    print("find path at first time via rl path")
+                closed_set[self.calc_index(nstart)] = nstart
+            else:
+                find_feasible, path = self.rs_gear(nstart, ngoal)
+                if find_feasible:
+                    fnode = path.info["final_node"]
+                    find_rs_path = True
+                    update = find_feasible
+                    rs_path = path
+                    rs_control_list = path.rscontrollist
+                    if self.config["plot_expand_tree"]:
+                        plot_rs_path(rs_path, self.ox, self.oy)
+                        self.plot_expand_tree(start, goal, closed_set, open_set)
+                        plt.savefig("runs_rl/savefig.png")
+                        plt.close() 
+                        # plt.close()
+                    if verbose:
+                        print("find path at first time via rs path")
+                    closed_set[self.calc_index(nstart)] = nstart
+                else:
+                    self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rscost)) 
+                
+        
         
         # Main Loop
         while True:
@@ -5872,7 +5915,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             break
                         else:
                             self.qp.put(node_ind, self.calc_hybrid_cost_simplify(node, ngoal, path.rscost))
-                    else:
+                    elif self.heuristic_type == "rl":
                         # wait for RL to guide search
                         t1 = time.time()
                         find_feasible, path = self.rl_gear(node, ngoal)
@@ -5884,9 +5927,9 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             update = find_feasible
                             rl_path = path
                             rl_control_list = path.rlcontrollist
-                            if self.config["plot_expand_tree"]:
-                                plot_rs_path(rl_path, self.ox, self.oy)
-                                self.plot_expand_tree(start, goal, closed_set, open_set)
+                            # if self.config["plot_expand_tree"]:
+                            #     plot_rs_path(rl_path, self.ox, self.oy)
+                            #     self.plot_expand_tree(start, goal, closed_set, open_set)
                                 # plt.close()
                             if verbose:
                                 print("final expansion node number:", count)
@@ -5896,6 +5939,44 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             # cost_qp = self.calc_euclidean_distance(node, ngoal)
                             # self.qp.put(node_ind, cost_qp)
                             self.qp.put(node_ind, self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
+                    else:
+                        find_feasible, path = self.rl_gear(node, ngoal)
+                        if find_feasible:
+                            fnode = path.info["final_node"]
+                            find_rl_path = True
+                            update = find_feasible
+                            rl_path = path
+                            rl_control_list = path.rlcontrollist
+                            # if self.config["plot_expand_tree"]:
+                            #     plot_rs_path(rl_path, self.ox, self.oy)
+                            #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                                # plt.close()
+                            if verbose:
+                                print("find via rl path")
+                                print("final expansion node number:", count)
+                            closed_set[node_ind] = node
+                            break
+                        else: 
+                            find_feasible, path = self.rs_gear(node, ngoal)
+                            if find_feasible:
+                                fnode = path.info["final_node"]
+                                find_rs_path = True
+                                update = find_feasible
+                                rs_path = path
+                                rs_control_list = path.rscontrollist
+                                # if self.config["plot_expand_tree"]:
+                                #     plot_rs_path(rs_path, self.ox, self.oy)
+                                #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                                #     # plt.close()
+                                if verbose:
+                                    print("find via rs path")
+                                    print("final expansion node number:", count)
+                                # Here you need to add node to closed set
+                                closed_set[node_ind] = node
+                                # break the inner expand_tree loop
+                                break
+                            else:
+                                self.qp.put(node_ind, self.calc_hybrid_cost_simplify(node, ngoal, path.rscost))
                     if self.config["plot_expand_tree"]:
                         self.plot_expand_tree(start, goal, closed_set, open_set)
                         plot_rs_path(path, self.ox, self.oy)
@@ -5914,18 +5995,19 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     update = find_feasible
                                     rs_path = path
                                     rs_control_list = path.rscontrollist
-                                    if self.config["plot_expand_tree"]:
-                                        plot_rs_path(rs_path, self.ox, self.oy)
-                                        self.plot_expand_tree(start, goal, closed_set, open_set)
-                                        # plt.close()
+                                    # if self.config["plot_expand_tree"]:
+                                    #     plot_rs_path(rs_path, self.ox, self.oy)
+                                    #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                                    #     # plt.close()
                                     if verbose:
+                                        print("find via rs path")
                                         print("final expansion node number:", count)
                                     closed_set[node_ind] = node
                                     break
                                 else:
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rscost)
                                     
-                            else:
+                            elif self.heuristic_type == "rl":
                                 t1 = time.time()
                                 find_feasible, path = self.rl_gear(node, ngoal)
                                 t2 = time.time()
@@ -5936,17 +6018,63 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     update = find_feasible
                                     rl_path = path
                                     rl_control_list = path.rlcontrollist
-                                    if self.config["plot_expand_tree"]:
-                                        plot_rs_path(rl_path, self.ox, self.oy)
-                                        self.plot_expand_tree(start, goal, closed_set, open_set)
-                                        # plt.close()
+                                    # if self.config["plot_expand_tree"]:
+                                    #     plot_rs_path(rl_path, self.ox, self.oy)
+                                    #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                                    #     # plt.close()
                                     if verbose:
+                                        print("find via rl path")
                                         print("final expansion node number:", count)
                                     closed_set[node_ind] = node
+                                    break
                                 else:
                                     # cost_qp = self.calc_euclidean_distance(node, ngoal)
                                     # self.qp.queue[node_ind] = cost_qp
-                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost)          
+                                    self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost) 
+                                    
+                            else:
+                                find_feasible, path = self.rl_gear(node, ngoal)
+                                if find_feasible:
+                                    fnode = path.info["final_node"]
+                                    find_rl_path = True
+                                    update = find_feasible
+                                    rl_path = path
+                                    rl_control_list = path.rlcontrollist
+                                    # if self.config["plot_expand_tree"]:
+                                    #     plot_rs_path(rl_path, self.ox, self.oy)
+                                    #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                                        # plt.close()
+                                    if verbose:
+                                        print("find via rl path")
+                                        print("final expansion node number:", count)
+                                    closed_set[node_ind] = node
+                                    break
+                                else: 
+                                    find_feasible, path = self.rs_gear(node, ngoal)
+                                    if find_feasible:
+                                        fnode = path.info["final_node"]
+                                        find_rs_path = True
+                                        update = find_feasible
+                                        rs_path = path
+                                        rs_control_list = path.rscontrollist
+                                        # if self.config["plot_expand_tree"]:
+                                        #     plot_rs_path(rs_path, self.ox, self.oy)
+                                        #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                                        #     # plt.close()
+                                        if verbose:
+                                            print("find via rs path")
+                                            print("final expansion node number:", count)
+                                        # Here you need to add node to closed set
+                                        closed_set[node_ind] = node
+                                        # break the inner expand_tree loop
+                                        break
+                                    else:
+                                        self.qp.put(node_ind, self.calc_hybrid_cost_simplify(node, ngoal, path.rscost))
+                    if self.config["plot_expand_tree"]:
+                        self.plot_expand_tree(start, goal, closed_set, open_set)
+                        plot_rs_path(path, self.ox, self.oy)
+                        plt.savefig("runs_rl/savefig.png")
+                        plt.close()         
             if self.config["plot_expand_tree"]:
                 self.plot_expand_tree(start, goal, closed_set, open_set)
                 plot_rs_path(path, self.ox, self.oy)
@@ -5958,32 +6086,49 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             print("final expand node: ", len(open_set) + len(closed_set) - 1)
         
         if get_control_sequence:
-            path, expand_control_list = self.extract_path_and_control(closed_set, fnode, nstart,find_rs_path=find_rs_path)
-            if self.heuristic_type == "rl":
-                if find_rl_path:
-                    all_control_list = expand_control_list + rl_control_list
-                else:
-                    rl_path = None
-                    all_control_list = expand_control_list
+            path, expand_control_list = self.extract_path_and_control(closed_set, fnode, nstart,find_rs_path=find_rs_path, find_rl_path=find_rl_path)
+            
+            if find_rl_path:
+                all_control_list = expand_control_list + rl_control_list
                 return path, all_control_list, rl_path
-            else:
-                if find_rs_path:
-                    all_control_list = expand_control_list + rs_control_list
-                else:
-                    rs_path = None
-                    all_control_list = expand_control_list
+            elif find_rs_path:
+                all_control_list = expand_control_list + rs_control_list
                 return path, all_control_list, rs_path
-        else:
-            if self.heuristic_type == "rl":
-                if find_rl_path: 
-                    return self.extract_path(closed_set, fnode, nstart), None, rl_path
-                else:
-                    return self.extract_path(closed_set, fnode, nstart), None, None
             else:
-                if find_rs_path: 
-                    return self.extract_path(closed_set, fnode, nstart), None, rs_path
-                else:
-                    return self.extract_path(closed_set, fnode, nstart), None, None
+                all_control_list = expand_control_list
+                return path, all_control_list, None
+            # if self.heuristic_type == "rl":
+            #     if find_rl_path:
+            #         all_control_list = expand_control_list + rl_control_list
+            #     else:
+            #         rl_path = None
+            #         all_control_list = expand_control_list
+            #     return path, all_control_list, rl_path
+            # else:
+            #     if find_rs_path:
+            #         all_control_list = expand_control_list + rs_control_list
+            #     else:
+            #         rs_path = None
+            #         all_control_list = expand_control_list
+            #     return path, all_control_list, rs_path         
+        else:
+            if find_rl_path:
+                return self.extract_path(closed_set, fnode, nstart), None, rl_path
+            elif find_rs_path:
+                return self.extract_path(closed_set, fnode, nstart), None, rs_path
+            else: 
+                return self.extract_path(closed_set, fnode, nstart), None, None
+            
+            # if self.heuristic_type == "rl":
+            #     if find_rl_path: 
+            #         return self.extract_path(closed_set, fnode, nstart), None, rl_path
+            #     else:
+            #         return self.extract_path(closed_set, fnode, nstart), None, None
+            # else:
+            #     if find_rs_path: 
+            #         return self.extract_path(closed_set, fnode, nstart), None, rs_path
+            #     else:
+            #         return self.extract_path(closed_set, fnode, nstart), None, None
     
     def plot_expand_tree(self, start, goal, closed_set, open_set):
         plt.axis("equal")

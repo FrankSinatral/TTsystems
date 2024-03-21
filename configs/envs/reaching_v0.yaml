@@ -1,8 +1,8 @@
 allow_backward: true
 distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
 reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
-max_episode_steps: 40
-N_steps: 30
+max_episode_steps: 60
+N_steps: 10
 controlled_vehicle_config:
   max_steer: 0.6
   rb: 1.0
