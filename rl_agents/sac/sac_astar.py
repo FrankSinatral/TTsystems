@@ -792,21 +792,21 @@ class SAC_ASTAR:
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
                         # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
                         self.add_results_to_buffer(astar_results)
-            o, _ = self.env.reset(seed=(self.seed + t))
-            if self.whether_astar and not self.astar_ablation:
-                encounter_start_list.append(o)
-            episode_start_time = time.time()
-            # if self.whether_astar:
-            #     # try:
-            #     #     self.add_expert_trajectory_to_buffer(o)
-            #     # except:
-            #     #     pass
-            #     add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
-            #     add_thread.start()
-            ep_ret, ep_len = 0, 0
-            if self.whether_her:
-                self.her_process_episode(temp_buffer)
-                temp_buffer = []
+                o, _ = self.env.reset(seed=(self.seed + t))
+                if self.whether_astar and not self.astar_ablation:
+                    encounter_start_list.append(o)
+                episode_start_time = time.time()
+                # if self.whether_astar:
+                #     # try:
+                #     #     self.add_expert_trajectory_to_buffer(o)
+                #     # except:
+                #     #     pass
+                #     add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
+                #     add_thread.start()
+                ep_ret, ep_len = 0, 0
+                if self.whether_her:
+                    self.her_process_episode(temp_buffer)
+                    temp_buffer = []
             
 
             # Update handling
