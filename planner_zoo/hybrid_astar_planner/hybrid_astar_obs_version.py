@@ -6000,7 +6000,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     #     self.plot_expand_tree(start, goal, closed_set, open_set)
                                     #     # plt.close()
                                     if verbose:
-                                        print("find via rs path")
                                         print("final expansion node number:", count)
                                     closed_set[node_ind] = node
                                     break
