@@ -48,29 +48,29 @@ def find_expert_trajectory(o, vehicle_type):
         "range_steer_set": 20,
         "max_iter": 50,
         "controlled_vehicle_config": {
-                    "w": 2.0, #[m] width of vehicle
-                    "wb": 3.5, #[m] wheel base: rear to front steer
-                    "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
-                    "rf": 4.5, #[m] distance from rear to vehicle front end
-                    "rb": 1.0, #[m] distance from rear to vehicle back end
-                    "tr": 0.5, #[m] tyre radius
-                    "tw": 1.0, #[m] tyre width
-                    "rtr": 2.0, #[m] rear to trailer wheel
-                    "rtf": 1.0, #[m] distance from rear to trailer front end
-                    "rtb": 3.0, #[m] distance from rear to trailer back end
-                    "rtr2": 2.0, #[m] rear to second trailer wheel
-                    "rtf2": 1.0, #[m] distance from rear to second trailer front end
-                    "rtb2": 3.0, #[m] distance from rear to second trailer back end
-                    "rtr3": 2.0, #[m] rear to third trailer wheel
-                    "rtf3": 1.0, #[m] distance from rear to third trailer front end
-                    "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-                    "max_steer": 0.6, #[rad] maximum steering angle
-                    "v_max": 2.0, #[m/s] maximum velocity 
-                    "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
-                    "xi_max": (np.pi) / 4, # jack-knife constraint  
-                },
+            "w": 2.0, #[m] width of vehicle
+            "wb": 3.5, #[m] wheel base: rear to front steer
+            "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+            "rf": 4.5, #[m] distance from rear to vehicle front end
+            "rb": 1.0, #[m] distance from rear to vehicle back end
+            "tr": 0.5, #[m] tyre radius
+            "tw": 1.0, #[m] tyre width
+            "rtr": 2.0, #[m] rear to trailer wheel
+            "rtf": 1.0, #[m] distance from rear to trailer front end
+            "rtb": 3.0, #[m] distance from rear to trailer back end
+            "rtr2": 2.0, #[m] rear to second trailer wheel
+            "rtf2": 1.0, #[m] distance from rear to second trailer front end
+            "rtb2": 3.0, #[m] distance from rear to second trailer back end
+            "rtr3": 2.0, #[m] rear to third trailer wheel
+            "rtf3": 1.0, #[m] distance from rear to third trailer front end
+            "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+            "max_steer": 0.6, #[rad] maximum steering angle
+            "v_max": 2.0, #[m/s] maximum velocity 
+            "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "xi_max": (np.pi) / 4, # jack-knife constraint  
+        },
         "acceptance_error": 0.5,
-        }
+    }
     if vehicle_type == "one_trailer":
         pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
     elif vehicle_type == "three_trailer":

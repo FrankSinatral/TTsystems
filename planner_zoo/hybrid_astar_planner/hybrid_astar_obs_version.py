@@ -5780,6 +5780,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 if self.config["plot_expand_tree"]:
                     plot_rs_path(rs_path, self.ox, self.oy)
                     self.plot_expand_tree(start, goal, closed_set, open_set)
+                    plt.savefig("runs_rl/savefig.png")
+                    plt.close() 
                     # plt.close()
                 if verbose:
                     print("find path at first time")
@@ -5801,7 +5803,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 if self.config["plot_expand_tree"]:
                     plot_rs_path(rl_path, self.ox, self.oy)
                     self.plot_expand_tree(start, goal, closed_set, open_set)
-                    # plt.close()
+                    plt.savefig("runs_rl/savefig.png")
+                    plt.close()
                 if verbose:
                     print("find path at first time")
                 closed_set[self.calc_index(nstart)] = nstart

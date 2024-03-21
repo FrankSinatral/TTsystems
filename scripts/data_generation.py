@@ -564,8 +564,8 @@ def restore_obstacles_info(flattened_info):
 def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
-    
-    map_env = [(-30, -30), (30, -30), (-30, 30), (30, 30)]
+    edge = 50
+    map_env = [(-edge, -edge), (edge, -edge), (-edge, edge), (edge, edge)]
     Map = tt_envs.MapBound(map_env)
     
     ox_map, oy_map = Map.sample_surface(0.1)
@@ -589,32 +589,33 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
        "N_steps": 10,
        "range_steer_set": 20,
        "max_iter": 50,
+       "heuristic_type": "rl",
        "controlled_vehicle_config": {
-                "w": 2.0, #[m] width of vehicle
-                "wb": 3.5, #[m] wheel base: rear to front steer
-                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
-                "rf": 4.5, #[m] distance from rear to vehicle front end
-                "rb": 1.0, #[m] distance from rear to vehicle back end
-                "tr": 0.5, #[m] tyre radius
-                "tw": 1.0, #[m] tyre width
-                "rtr": 2.0, #[m] rear to trailer wheel
-                "rtf": 1.0, #[m] distance from rear to trailer front end
-                "rtb": 3.0, #[m] distance from rear to trailer back end
-                "rtr2": 2.0, #[m] rear to second trailer wheel
-                "rtf2": 1.0, #[m] distance from rear to second trailer front end
-                "rtb2": 3.0, #[m] distance from rear to second trailer back end
-                "rtr3": 2.0, #[m] rear to third trailer wheel
-                "rtf3": 1.0, #[m] distance from rear to third trailer front end
-                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-                "max_steer": 0.6, #[rad] maximum steering angle
-                "v_max": 2.0, #[m/s] maximum velocity 
-                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
-                "xi_max": (np.pi) / 4, # jack-knife constraint  
-            },
+            "w": 2.0, #[m] width of vehicle
+            "wb": 3.5, #[m] wheel base: rear to front steer
+            "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+            "rf": 4.5, #[m] distance from rear to vehicle front end
+            "rb": 1.0, #[m] distance from rear to vehicle back end
+            "tr": 0.5, #[m] tyre radius
+            "tw": 1.0, #[m] tyre width
+            "rtr": 2.0, #[m] rear to trailer wheel
+            "rtf": 1.0, #[m] distance from rear to trailer front end
+            "rtb": 3.0, #[m] distance from rear to trailer back end
+            "rtr2": 2.0, #[m] rear to second trailer wheel
+            "rtf2": 1.0, #[m] distance from rear to second trailer front end
+            "rtb2": 3.0, #[m] distance from rear to second trailer back end
+            "rtr3": 2.0, #[m] rear to third trailer wheel
+            "rtf3": 1.0, #[m] distance from rear to third trailer front end
+            "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+            "max_steer": 0.6, #[rad] maximum steering angle
+            "v_max": 2.0, #[m/s] maximum velocity 
+            "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "xi_max": (np.pi) / 4, # jack-knife constraint  
+        },
        "acceptance_error": 0.5,
     }
     # three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
-    three_trailer_planner = alg_test.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     # try:
     t1 = time.time()
     path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
@@ -642,26 +643,35 @@ def vis_results(results, env):
     
 if __name__ == "__main__":
     
-    with open('planner_result/failed_result_0.pkl', 'rb') as f:
-        datas = pickle.load(f)
-    goal_with_obstacles_info_list = []
-    # for i in range(len(datas)):
-    data = datas[1]
-    goal = data["goal"]
-    obstacles_info = data["obstacles_info"]
-    goal_with_obstacles_info = {
-        "goal": goal,
-        "obstacles_info": obstacles_info
-    }
-    goal_with_obstacles_info_list.append(goal_with_obstacles_info)
-    with open("configs/envs/cluttered_reaching_v0_eval.yaml", 'r') as file:
+    # with open('planner_result/failed_result_0.pkl', 'rb') as f:
+    #     datas = pickle.load(f)
+    # goal_with_obstacles_info_list = []
+    # # for i in range(len(datas)):
+    # data = datas[1]
+    # goal = data["goal"]
+    # obstacles_info = data["obstacles_info"]
+    # goal_with_obstacles_info = {
+    #     "goal": goal,
+    #     "obstacles_info": obstacles_info
+    # }
+    # goal_with_obstacles_info_list.append(goal_with_obstacles_info)
+    # with open("configs/envs/cluttered_reaching_v0_eval.yaml", 'r') as file:
+    #     config = yaml.safe_load(file)
+    # # env = tt_envs.TractorTrailerParkingEnv(config)
+    # env = gym.make("tt-cluttered-reaching-v0", config=config)
+    # env.unwrapped.update_goal_with_obstacles_info_list(goal_with_obstacles_info_list)
+    # obs, _ = env.reset()
+    # find_expert_trajectory(obs)
+    # print(1)
+    
+    
+    with open("configs/envs/reaching_v0_eval.yaml", 'r') as file:
         config = yaml.safe_load(file)
-    # env = tt_envs.TractorTrailerParkingEnv(config)
-    env = gym.make("tt-cluttered-reaching-v0", config=config)
-    env.unwrapped.update_goal_with_obstacles_info_list(goal_with_obstacles_info_list)
+    env = gym.make("tt-reaching-v0", config=config)
     obs, _ = env.reset()
     find_expert_trajectory(obs)
     print(1)
+    
     
     # start_lists = []
     # # Initialize an empty list to store the starting observations

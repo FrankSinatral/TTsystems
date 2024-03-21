@@ -11,10 +11,7 @@ from tractor_trailer_envs import register_tt_envs
 from datetime import datetime
 from rl_agents.sac import core
 
-# from rl_training.config import get_config
 
-def tt_env_fn(config: dict = None, args = None): 
-    return tt_envs.TractorTrailerEnv(config, args)
 
     
 def gym_env_fn():

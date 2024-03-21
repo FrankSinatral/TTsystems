@@ -23,7 +23,7 @@ whether_her: False
 use_auto: True
 
 
-with_env_number: 100 # -1 means not interacting with env
+with_env_number: 1000 # -1 means not interacting with env
 with_astar_number: 1000 # -1 means not using astar
 align_with_env: True # whether env and astar solve the same task
 

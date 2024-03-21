@@ -2,7 +2,7 @@ allow_backward: true
 distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
 reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
 max_episode_steps: 40
-N_steps: 10
+N_steps: 30
 controlled_vehicle_config:
   max_steer: 0.6
   rb: 1.0
@@ -26,10 +26,10 @@ controlled_vehicle_config:
   xi_max: 0.7853981633974483
 evaluate_mode: false
 goal_region_bound:
-  x_min: -10
-  x_max: 10
-  y_min: -10
-  y_max: 10
+  x_min: -30
+  x_max: 30
+  y_min: -30
+  y_max: 30
 outer_wall_bound:
   x_min: -80
   x_max: 80
