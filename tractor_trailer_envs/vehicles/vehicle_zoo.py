@@ -977,6 +977,7 @@ class ThreeTrailer(Vehicle):
         self.V_MAX = config["v_max"]
         
         self.SAFE_D = config["safe_d"]
+        self.SAFE_METRIC = config["safe_metric"]
         self.XI_MAX = config["xi_max"]
         self.state = (
             0.0, 0.0, np.deg2rad(0.0), 
@@ -985,6 +986,14 @@ class ThreeTrailer(Vehicle):
     
     def reset_equilibrium(self, x, y, yaw):
         self.state = (x, y, yaw, yaw, yaw, yaw)
+        
+    def calculate_configurations_given_equilibrium(self, equilibrium):
+        # return the rectangle configuration
+        x, y, yaw0, yawt1, yawt2, yawt3 = equilibrium
+        assert yaw0 == yawt1 and yawt1 == yawt2 and yawt2 == yawt3, "must be equilibrium state"
+        x_center = x - ((self.RF + self.RTR + self.RTR2 + self.RTR3 + self.RTF3)/ 2 - self.RF) * np.cos(yaw0)
+        y_center = y - ((self.RF + self.RTR + self.RTR2 + self.RTR3 + self.RTF3)/ 2 - self.RF) * np.sin(yaw0)
+        return (x_center, y_center, self.RF + self.RTR + self.RTR2 + self.RTR3 + self.RTF3, self.W, yaw0)
         
     def reset(self, *args):
         self.state = tuple(arg for arg in args if arg is not None)
@@ -1507,6 +1516,113 @@ class ThreeTrailer(Vehicle):
                     return True
 
         return False
+    
+    
+    def collision_metric(self, ox: List[float], oy: List[float]) -> bool:
+        '''
+        give a collision metric for each tractor and trailer
+        Inputs:
+        x, y, yaw, yawt1, yawt2, yawt3: list
+        first use kdtree to find obstacle index
+        then use a more complicated way to test whether to collide
+        
+        tractor_collision_metric: 1 means there are no risk, the lower means there are more risk for colliding
+        '''
+        tractor_collision_metric = 1
+        trailer1_collision_metric = 1
+        trailer2_collision_metric = 1
+        trailer3_collision_metric = 1
+        points = np.array(list(zip(ox, oy)))
+        tree = cKDTree(points)
+        x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        d = self.SAFE_METRIC
+        
+        # first trailer test collision
+        deltal1 = (self.RTF + self.RTB) / 2.0 #which is exactly C.RTR
+        rt1 = (self.RTB - self.RTF) / 2.0 + d #half length of trailer1 plus d
+
+        ctx1 = x - deltal1 * np.cos(yawt1)
+        cty1 = y - deltal1 * np.sin(yawt1)
+
+        idst1 = tree.query_ball_point([ctx1, cty1], rt1)
+
+        if idst1:
+            min_metric = rt1
+            for i in idst1:
+                xot1 = ox[i] - ctx1
+                yot1 = oy[i] - cty1
+
+                dx_trail1 = xot1 * np.cos(yawt1) + yot1 * np.sin(yawt1)
+                dy_trail1 = -xot1 * np.sin(yawt1) + yot1 * np.cos(yawt1)
+                d_trail1 = np.sqrt((dx_trail1)**2 + (dy_trail1)**2)
+                min_metric = min(min_metric, d_trail1)
+
+            trailer1_collision_metric = min_metric / rt1
+        # check the second trailer collision
+        deltal2 = (self.RTF2 + self.RTB2) / 2.0
+        rt2 = (self.RTB2 - self.RTF2) / 2.0 + d
+        
+        ctx2 = ctx1 - deltal2 * np.cos(yawt2)
+        cty2 = cty1 - deltal2 * np.sin(yawt2)
+        
+        idst2 = tree.query_ball_point([ctx2, cty2], rt2)
+        
+        if idst2:
+            min_metric = rt2
+            for i in idst2:
+                xot2 = ox[i] - ctx2
+                yot2 = oy[i] - cty2
+                
+                dx_trail2 = xot2 * np.cos(yawt2) + yot2 * np.sin(yawt2)
+                dy_trail2 = -xot2 * np.cos(yawt2) + yot2 * np.cos(yawt2)
+                d_trail2 = np.sqrt((dx_trail2)**2 + (dy_trail2)**2)
+                min_metric = min(min_metric, d_trail2)
+            trailer2_collision_metric = min_metric / rt2
+                    
+        # check the third trailer collision
+        deltal3 = (self.RTF3 + self.RTB3) / 2.0
+        rt3 = (self.RTB3 - self.RTF3) / 2.0 + d
+        
+        ctx3 = ctx2 - deltal3 * np.cos(yawt3)
+        cty3 = cty2 - deltal3 * np.sin(yawt3)
+        
+        idst3 = tree.query_ball_point([ctx3, cty3], rt3)
+        
+        if idst3:
+            min_metric = rt3
+            for i in idst3:
+                xot3 = ox[i] - ctx3
+                yot3 = oy[i] - cty3
+                
+                dx_trail3 = xot3 * np.cos(yawt3) + yot3 * np.sin(yawt3)
+                dy_trail3 = -xot3 * np.cos(yawt3) + yot3 * np.cos(yawt3)
+                d_trail3 = np.sqrt((dx_trail3)**2 + (dy_trail3)**2)
+                min_metric = min(min_metric, d_trail3)
+            trailer3_collision_metric = min_metric / rt3
+                    
+        # check the tractor collision
+        deltal = (self.RF - self.RB) / 2.0
+        rc = (self.RF + self.RB) / 2.0 + d
+
+        cx = x + deltal * np.cos(yaw)
+        cy = y + deltal * np.sin(yaw)
+
+        ids = tree.query_ball_point([cx, cy], rc)
+
+        if ids:
+            min_metric = rc
+            for i in ids:
+                xo = ox[i] - cx
+                yo = oy[i] - cy
+
+                dx_car = xo * np.cos(yaw) + yo * np.sin(yaw)
+                dy_car = -xo * np.sin(yaw) + yo * np.cos(yaw)
+                d_car = np.sqrt((dx_car)**2 + (dy_car)**2)
+                min_metric = min(min_metric, d_car)
+            tractor_collision_metric = min_metric / rc
+        
+
+        return np.array([tractor_collision_metric, trailer1_collision_metric, trailer2_collision_metric, trailer3_collision_metric], dtype=np.float32)
 
 if __name__ == "__main__":
     parser = get_config()

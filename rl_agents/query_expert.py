@@ -15,6 +15,60 @@ from multiprocessing import Pool
 import logging
 import random
 
+def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heuristic_type="traditional"):
+    """only for 3-tt"""
+    goal = o[0]["desired_goal"]
+    input = o[0]["observation"]
+    obstacles_info = o[1]
+    if len(obstacles_info) == 0:
+        obstacles_info = None
+        
+    config = {
+        "plot_final_path": False,
+        "plot_rs_path": False,
+        "plot_expand_tree": False,
+        "mp_step": mp_step,
+        "N_steps": N_steps, # Important
+        "range_steer_set": 20,
+        "max_iter": max_iter,
+        "heuristic_type": heuristic_type,
+        "controlled_vehicle_config": {
+            "w": 2.0, #[m] width of vehicle
+            "wb": 3.5, #[m] wheel base: rear to front steer
+            "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+            "rf": 4.5, #[m] distance from rear to vehicle front end
+            "rb": 1.0, #[m] distance from rear to vehicle back end
+            "tr": 0.5, #[m] tyre radius
+            "tw": 1.0, #[m] tyre width
+            "rtr": 2.0, #[m] rear to trailer wheel
+            "rtf": 1.0, #[m] distance from rear to trailer front end
+            "rtb": 3.0, #[m] distance from rear to trailer back end
+            "rtr2": 2.0, #[m] rear to second trailer wheel
+            "rtf2": 1.0, #[m] distance from rear to second trailer front end
+            "rtb2": 3.0, #[m] distance from rear to second trailer back end
+            "rtr3": 2.0, #[m] rear to third trailer wheel
+            "rtf3": 1.0, #[m] distance from rear to third trailer front end
+            "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+            "max_steer": 0.6, #[rad] maximum steering angle
+            "v_max": 2.0, #[m/s] maximum velocity 
+            "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
+            "xi_max": (np.pi) / 4, # jack-knife constraint  
+        },
+        "acceptance_error": 0.5,
+    }
+    
+    pack_transition_list = query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config)
+    return pack_transition_list
+
+def query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None):
+    # fixed to 6-dim
+    transition_list = generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config)
+    if transition_list is not None:
+        pack_transition_list = pack_transition_with_reward_meta(goal, transition_list, N_steps=config["N_steps"])
+    else:
+        return None
+    return pack_transition_list
 
 def action_recover_from_planner(control_list, simulation_freq, v_max, max_steer):
     # this shift is for rl api
@@ -108,6 +162,7 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
         "max_steer": 0.6, #[rad] maximum steering angle
         "v_max": 2.0, #[m/s] maximum velocity 
         "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+        "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
         "xi_max": (np.pi) / 4, # jack-knife constraint  
     }
     transition_list = []
@@ -131,6 +186,57 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
     else:
         print("Reject")
         return None
+  
+def forward_simulation_three_trailer_meta(input, goal, ox, oy, control_list, simulation_freq):
+    # Pack every 10 steps to add to buffer
+    config_dict = {
+        "w": 2.0, #[m] width of vehicle
+        "wb": 3.5, #[m] wheel base: rear to front steer
+        "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+        "rf": 4.5, #[m] distance from rear to vehicle front end
+        "rb": 1.0, #[m] distance from rear to vehicle back end
+        "tr": 0.5, #[m] tyre radius
+        "tw": 1.0, #[m] tyre width
+        "rtr": 2.0, #[m] rear to trailer wheel
+        "rtf": 1.0, #[m] distance from rear to trailer front end
+        "rtb": 3.0, #[m] distance from rear to trailer back end
+        "rtr2": 2.0, #[m] rear to second trailer wheel
+        "rtf2": 1.0, #[m] distance from rear to second trailer front end
+        "rtb2": 3.0, #[m] distance from rear to second trailer back end
+        "rtr3": 2.0, #[m] rear to third trailer wheel
+        "rtf3": 1.0, #[m] distance from rear to third trailer front end
+        "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+        "max_steer": 0.6, #[rad] maximum steering angle
+        "v_max": 2.0, #[m/s] maximum velocity 
+        "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+        "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
+        "xi_max": (np.pi) / 4, # jack-knife constraint  
+    }
+    transition_list = []
+    
+    
+    controlled_vehicle = tt_envs.ThreeTrailer(config_dict)
+    controlled_vehicle.reset(*input)
+    state = controlled_vehicle.observe()
+    state_collision_metric = controlled_vehicle.collision_metric(ox, oy)
+    for action_clipped in control_list:
+        controlled_vehicle.step(action_clipped, 1 / simulation_freq)
+        next_state = controlled_vehicle.observe()
+        next_state_collision_metric = controlled_vehicle.collision_metric(ox, oy)
+        transition = [state, state_collision_metric, action_clipped, next_state, next_state_collision_metric]
+        transition_list.append(transition)
+        state = next_state
+        state_collision_metric = next_state_collision_metric
+    final_state = np.array(controlled_vehicle.state)
+    distance_error = mixed_norm(goal, final_state)
+    # distance_error = np.linalg.norm(goal - final_state)
+    if distance_error < 0.5:
+        print("Accept")
+        return transition_list
+    else:
+        print("Reject")
+        return None   
+
     
 def pack_transition(transition_list):
     # Currently not used
@@ -166,6 +272,24 @@ def pack_transition_with_reward(goal, transition_list, obstacles_info=None, N_st
                 pack_transition_list.append([np.concatenate([state, state, goal, obstacles_info]), action, np.concatenate([next_state, next_state, goal, obstacles_info]), -1, False]) # fix a bug
             else:
                 pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1 , False])
+        i += N_steps
+    return pack_transition_list
+
+def pack_transition_with_reward_meta(goal, transition_list, N_steps=10):
+    # for rl training
+    # add reward every 10 steps
+    assert len(transition_list) % N_steps == 0, "The length of transition list should be a multiple of N_steps"
+    pack_transition_list = []
+    i = 0
+    while i < len(transition_list):
+        state, state_collision_metric, action, _, _ = transition_list[i]
+        next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+        _, _, _, next_state, next_state_collsion_metric = transition_list[next_state_index]
+        if i == len(transition_list) - N_steps:
+            #pack mamually with reward
+            pack_transition_list.append([np.concatenate([state, state, goal, state_collision_metric]), action, np.concatenate([next_state, next_state, goal, next_state_collsion_metric]), 15, True])
+        else:
+            pack_transition_list.append([np.concatenate([state, state, goal, state_collision_metric]), action, np.concatenate([next_state, next_state, goal, next_state_collsion_metric]), -1, False]) # fix a bug
         i += N_steps
     return pack_transition_list
 
@@ -285,7 +409,7 @@ def restore_obstacles_info(flattened_info):
 def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, config=None):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
-    edge = 50
+    edge = 80
     map_env = [(-edge, -edge), (edge, -edge), (-edge, edge), (edge, edge)]
     Map = tt_envs.MapBound(map_env)
     
@@ -305,6 +429,38 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, 
     assert config is not None, "config should not be None"
     
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
+    # try:
+    t1 = time.time()
+    path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    # except: 
+    #     return None
+    if control_list is not None:
+        control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
+        transition_list = forward_simulation_three_trailer_meta(input, goal, ox, oy, control_recover_list, simulation_freq=10)
+    else:
+        return None
+    return transition_list 
+
+def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None):
+   
+    # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
+    
+    ox_map, oy_map = map.sample_surface(0.1)
+    ox = ox_map
+    oy = oy_map
+    ox, oy = tt_envs.remove_duplicates(ox, oy)
+    if obstacles_info is not None:
+        for rectangle in obstacles_info:
+            obstacle = tt_envs.QuadrilateralObstacle(rectangle)
+            ox_obs, oy_obs = obstacle.sample_surface(0.1)
+            ox += ox_obs
+            oy += oy_obs
+    
+    assert config is not None, "config should not be None"
+    
+    three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:
         t1 = time.time()
         path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
@@ -314,10 +470,10 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, 
         return None
     if control_list is not None:
         control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
-        transition_list = forward_simulation_three_trailer(input, goal, control_recover_list, simulation_freq=10)
+        transition_list = forward_simulation_three_trailer_meta(input, goal, ox, oy, control_recover_list, simulation_freq=10)
     else:
         return None
-    return transition_list 
+    return transition_list
 
 def random_generate_goal_one_trailer():
     x_coordinates = random.uniform(-10, 10)
@@ -342,3 +498,4 @@ def query_hybrid_astar_three_trailer(input, goal, obstacles_info=None, config=No
     else:
         return None
     return pack_transition_list
+

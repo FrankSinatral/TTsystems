@@ -91,6 +91,7 @@ class TractorTrailerReachingEnv(Env):
                 "max_steer": 0.6, #[rad] maximum steering angle
                 "v_max": 2.0, #[m/s] maximum velocity 
                 "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                "safe_metric": 3.0, #[m] the safe distance metric
                 "xi_max": (np.pi) / 4, # jack-knife constraint  
             },
             "outer_wall_bound": {

@@ -4319,7 +4319,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 "max_steer": 0.6, #[rad] maximum steering angle
                 "v_max": 2.0, #[m/s] maximum velocity 
                 "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
-                "xi_max": (np.pi) / 4, # jack-knife constraint  
+                "xi_max": (np.pi) / 4, # jack-knife constraint 
+                "safe_metric": 3.0, 
             },
             "xy_reso": 2.0,
             "yaw_reso": np.deg2rad(15.0),
@@ -4439,7 +4440,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                         whether_astar=config_algo['whether_astar'],
                         config=config,
                         device='cpu')
-            filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_2849999.pth'
+            # filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_2849999.pth'
+            filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_10_20240322_002324/model_2999999.pth'
             self.agent.load(filename, whether_load_buffer=False)
             # self.clipped_action = self.agent.test_env.unwrapped.act_limit
             # self.agent_steps = self.agent.test_env.unwrapped.config["N_steps"]
@@ -5050,6 +5052,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "max_steer": 0.6, #[rad] maximum steering angle
             "v_max": 2.0, #[m/s] maximum velocity 
             "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
             "xi_max": (np.pi) / 4, # jack-knife constraint  
         }
         path_x_list, path_y_list, path_yaw_list, path_yawt1_list = [], [], [], []

@@ -1,4 +1,4 @@
-algo_name: 'sac_astar'
+algo_name: 'sac_astar_meta'
 seed: 10
 env_name: 'meta-reaching-v0' # remember to switch script
 sac_steps_per_epoch: 50000

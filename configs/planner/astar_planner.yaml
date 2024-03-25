@@ -1,0 +1,31 @@
+plot_final_path: False
+plot_rs_path: False
+plot_expand_tree: False
+mp_step: 10
+N_steps: 10 
+range_steer_set: 20
+max_iter: 50
+heuristic_type: traditional
+controlled_vehicle_config: 
+    w: 2.0
+    wb: 3.5
+    wd: 1.4
+    rf: 4.5
+    rb: 1.0
+    tr: 0.5
+    tw: 1.0
+    rtr: 2.0
+    rtf: 1.0
+    rtb: 3.0
+    rtr2: 2.0
+    rtf2: 1.0
+    rtb2: 3.0
+    rtr3: 2.0
+    rtf3: 1.0
+    rtb3: 3.0   
+    max_steer: 0.6
+    v_max: 2.0
+    safe_d: 0.0
+    safe_metric: 3.0
+    xi_max: 0.7853981633974483
+acceptance_error: 0.5

@@ -18,8 +18,7 @@ import pickle
 import rl_agents.sac.core as core
 # Try to add logger
 from rl_agents.utils.logx import EpochLogger
-from rl_agents.query_expert import query_hybrid_astar_one_trailer, query_hybrid_astar_three_trailer
-from rl_agents.query_expert import query_hybrid_astar_three_trailer_meta, find_expert_trajectory_meta
+from rl_agents.query_expert import find_expert_trajectory_meta
 import gymnasium as gym
 from gymnasium.spaces import Box
 import random
@@ -31,100 +30,6 @@ from joblib import Parallel, delayed
 import matplotlib.pyplot as plt
 from PIL import Image
 import io
-
-def find_expert_trajectory(o, vehicle_type):
-    goal = o["desired_goal"]
-    input = o["observation"]
-    try:
-        obstacles_info = o["obstacles_info"]
-    except:
-        obstacles_info = None
-        
-    config = {
-        "plot_final_path": False,
-        "plot_rs_path": False,
-        "plot_expand_tree": False,
-        "mp_step": 10,
-        "N_steps": 10, # Important
-        "range_steer_set": 20,
-        "max_iter": 50,
-        "heuristic_type": "traditional",
-        "controlled_vehicle_config": {
-            "w": 2.0, #[m] width of vehicle
-            "wb": 3.5, #[m] wheel base: rear to front steer
-            "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
-            "rf": 4.5, #[m] distance from rear to vehicle front end
-            "rb": 1.0, #[m] distance from rear to vehicle back end
-            "tr": 0.5, #[m] tyre radius
-            "tw": 1.0, #[m] tyre width
-            "rtr": 2.0, #[m] rear to trailer wheel
-            "rtf": 1.0, #[m] distance from rear to trailer front end
-            "rtb": 3.0, #[m] distance from rear to trailer back end
-            "rtr2": 2.0, #[m] rear to second trailer wheel
-            "rtf2": 1.0, #[m] distance from rear to second trailer front end
-            "rtb2": 3.0, #[m] distance from rear to second trailer back end
-            "rtr3": 2.0, #[m] rear to third trailer wheel
-            "rtf3": 1.0, #[m] distance from rear to third trailer front end
-            "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-            "max_steer": 0.6, #[rad] maximum steering angle
-            "v_max": 2.0, #[m/s] maximum velocity 
-            "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
-            "xi_max": (np.pi) / 4, # jack-knife constraint  
-        },
-        "acceptance_error": 0.5,
-    }
-    if vehicle_type == "one_trailer":
-        pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
-    elif vehicle_type == "three_trailer":
-        pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info, config)
-    return pack_transition_list
-
-# def find_expert_trajectory_meta(o, vehicle_type):
-#     goal = o[0]["desired_goal"]
-#     input = o[0]["observation"]
-#     obstacles_info = o[1]
-#     if len(obstacles_info) == 0:
-#         obstacles_info = None
-        
-#     config = {
-#         "plot_final_path": False,
-#         "plot_rs_path": False,
-#         "plot_expand_tree": False,
-#         "mp_step": 10,
-#         "N_steps": 10, # Important
-#         "range_steer_set": 20,
-#         "max_iter": 50,
-#         "heuristic_type": "traditional",
-#         "controlled_vehicle_config": {
-#             "w": 2.0, #[m] width of vehicle
-#             "wb": 3.5, #[m] wheel base: rear to front steer
-#             "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
-#             "rf": 4.5, #[m] distance from rear to vehicle front end
-#             "rb": 1.0, #[m] distance from rear to vehicle back end
-#             "tr": 0.5, #[m] tyre radius
-#             "tw": 1.0, #[m] tyre width
-#             "rtr": 2.0, #[m] rear to trailer wheel
-#             "rtf": 1.0, #[m] distance from rear to trailer front end
-#             "rtb": 3.0, #[m] distance from rear to trailer back end
-#             "rtr2": 2.0, #[m] rear to second trailer wheel
-#             "rtf2": 1.0, #[m] distance from rear to second trailer front end
-#             "rtb2": 3.0, #[m] distance from rear to second trailer back end
-#             "rtr3": 2.0, #[m] rear to third trailer wheel
-#             "rtf3": 1.0, #[m] distance from rear to third trailer front end
-#             "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-#             "max_steer": 0.6, #[rad] maximum steering angle
-#             "v_max": 2.0, #[m/s] maximum velocity 
-#             "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
-#             "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
-#             "xi_max": (np.pi) / 4, # jack-knife constraint  
-#         },
-#         "acceptance_error": 0.5,
-#     }
-#     if vehicle_type == "one_trailer":
-#         pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
-#     elif vehicle_type == "three_trailer":
-#         pack_transition_list = query_hybrid_astar_three_trailer_meta(input, goal, obstacles_info, config)
-#     return pack_transition_list
 
 class ReplayBuffer:
     """
@@ -196,7 +101,7 @@ class ImageReplayBuffer:
                  obs2_image=self.obs2_image_buf[idxs].astype(np.float32))  # Convert to np.float32
         return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) for k,v in batch.items()}
 
-class SAC_ASTAR:
+class SAC_ASTAR_META:
     def __init__(self, 
                  env_fn, 
                  algo='sac',
@@ -222,120 +127,21 @@ class SAC_ASTAR:
                  whether_her=True,
                  use_automatic_entropy_tuning=False,
                  log_alpha_lr=1e-3,
-                 env_name='reaching-v0',
+                 env_name='meta-reaching-v0',
                  pretrained=False,
                  pretrained_itr=None,
                  pretrained_dir=None,
                  whether_astar=True,
                  astar_ablation=False,
+                 astar_mp_steps=10,
+                 astar_N_steps=10,
+                 astar_max_iter=50,
+                 astar_heuristic_type='traditional',
                  config: dict = None,
                  device = None,
                  args = None):    
         """
-        Soft Actor-Critic (SAC) with Astar as Expert Trajectory
-        Args:
-            env_fn : A function which creates a copy of the environment.
-                The environment satisfy the OpenAI Gym API.
-                Here we can use the standard parking from highway and tt_envs
-                written by Fank.
-
-            actor_critic: The constructor method for a PyTorch Module with an ``act`` 
-                method, a ``pi`` module, a ``q1`` module, and a ``q2`` module.
-                The ``act`` method and ``pi`` module should accept batches of 
-                observations as inputs, and ``q1`` and ``q2`` should accept a batch 
-                of observations and a batch of actions as inputs. When called, 
-                ``act``, ``q1``, and ``q2`` should return:
-
-                ===========  ================  ======================================
-                Call         Output Shape      Description
-                ===========  ================  ======================================
-                ``act``      (batch, act_dim)  | Numpy array of actions for each 
-                                            | observation.
-                ``q1``       (batch,)          | Tensor containing one current estimate
-                                            | of Q* for the provided observations
-                                            | and actions. (Critical: make sure to
-                                            | flatten this!)
-                ``q2``       (batch,)          | Tensor containing the other current 
-                                            | estimate of Q* for the provided observations
-                                            | and actions. (Critical: make sure to
-                                            | flatten this!)
-                ===========  ================  ======================================
-
-                Calling ``pi`` should return:
-
-                ===========  ================  ======================================
-                Symbol       Shape             Description
-                ===========  ================  ======================================
-                ``a``        (batch, act_dim)  | Tensor containing actions from policy
-                                            | given observations.
-                ``logp_pi``  (batch,)          | Tensor containing log probabilities of
-                                            | actions in ``a``. Importantly: gradients
-                                            | should be able to flow back into ``a``.
-                ===========  ================  ======================================
-
-            ac_kwargs (dict): Any kwargs appropriate for the ActorCritic object 
-                you provided to SAC.
-
-            seed (int): Seed for random number generators.
-
-            steps_per_epoch (int): Number of steps of interaction (state-action pairs) 
-                for the agent and the environment in each epoch.
-                Notice that this epoch is set manually.
-
-            epochs (int): Number of epochs to run and train agent.
-                steps_per_epoch * epochs stands for the total timestep.
-
-            replay_size (int): Maximum length of replay buffer.
-
-            gamma (float): Discount factor. (Always between 0 and 1.)
-                for tt_envs we choose gamma to be 0.99(notice for the long horizon effect)
-
-            polyak (float): Interpolation factor in polyak averaging for target 
-                networks. Target networks are updated towards main networks 
-                according to:
-
-                .. math:: \\theta_{\\text{targ}} \\leftarrow 
-                    \\rho \\theta_{\\text{targ}} + (1-\\rho) \\theta
-
-                where :math:`\\rho` is polyak. (Always between 0 and 1, usually 
-                close to 1.)
-
-            lr (float): Learning rate (used for both policy and value learning).
-
-            alpha (float): Entropy regularization coefficient. (Equivalent to 
-                inverse of reward scale in the original SAC paper.)
-                Fank: Here we implement an auto alpha
-
-            batch_size (int): Minibatch size for SGD.
-
-            start_steps (int): Number of steps for uniform-random action selection,
-                before running real policy. Helps exploration.
-                Fank: Random taking actions at the first.
-
-            update_after (int): Number of env interactions to collect before
-                starting to do gradient descent updates. Ensures replay buffer
-                is full enough for useful updates.
-                Fank: update_start.
-
-            update_every (int): Number of env interactions that should elapse
-                between gradient descent updates. Note: Regardless of how long 
-                you wait between updates, the ratio of env steps to gradient steps 
-                is locked to 1.
-                Fank: You can update_every 4000, meaning after 4000 timesteps
-                      you update 4000 sac.
-
-            num_test_episodes (int): Number of episodes to test the deterministic
-                policy at the end of each epoch.
-                Fank: we set num_test_episodes to 10.
-
-            max_ep_len (int): Maximum length of trajectory / episode / rollout.
-                Fank: this parameter not used.
-
-            logger_kwargs (dict): Keyword args for EpochLogger.
-
-            save_freq (int): How often (in terms of gap between epochs) to save
-                the current policy and value function.
-
+        Fank: SAC_Astar meta version
         """ 
         # TODO: we now take MPI tools out
         self.logger = EpochLogger(**logger_kwargs)
@@ -350,50 +156,26 @@ class SAC_ASTAR:
         np.random.seed(seed)
         self.env_name = env_name
         # Instantiate environment
-        if self.env_name == "standard_parking":
-            # Fank: register only once the highway_env
-            from highway_env import register_highway_envs
-            register_highway_envs()
-            self.env, self.test_env = env_fn(), env_fn() # using gym to instantiate env
-            self.state_dim = self.env.observation_space['observation'].shape[0]
-            self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float64)
-            self.obs_dim = self.box.shape
-            self.act_dim = self.env.action_space.shape[0]
-            # Action limit for clamping: critically, assumes all dimensions share the same bound!
-            self.act_limit = self.env.action_space.high[0]
-            # recent seed 
-            self.env.action_space.seed(seed)
-            # self.env.observation_space.seed(seed)
-            self.test_env.action_space.seed(seed)
-            # self.test_env.observation_space.seed(seed)
-            # Create actor-critic module and target networks
-            self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
-            self.ac_targ = deepcopy(self.ac)
-        else:
-            # Fank: only need to register tt envs once
-            from tractor_trailer_envs import register_tt_envs
-            register_tt_envs()
-            self.env, self.test_env = env_fn(config), env_fn(config)
-            self.state_dim = self.env.observation_space['observation'].shape[0]
-            if self.env_name.startswith("cluttered"):
-                self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 8,), np.float64)
-            elif self.env_name.startswith("meta"):
-                self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 4,), np.float32)
-            else:
-                self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float64)
-            self.obs_dim = self.box.shape
-            self.act_dim = self.env.action_space.shape[0]
-            # Action limit for clamping: critically, assumes all dimensions share the same bound!
-            self.act_limit = self.env.action_space.high[0]
-            # Fank: only need to seed action space
-            self.env.action_space.seed(seed)
-            self.test_env.action_space.seed(seed)
-            # Create actor-critic module and target networks
-            self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
-            self.ac_targ = deepcopy(self.ac)
-            
-            # vehicle_type
-            self.vehicle_type = config["vehicle_type"]
+        
+        # Fank: only need to register tt envs once
+        from tractor_trailer_envs import register_tt_envs
+        register_tt_envs()
+        self.env, self.test_env = env_fn(config), env_fn(config)
+        self.state_dim = self.env.observation_space['observation'].shape[0]
+        self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 4,), np.float32)
+        self.obs_dim = self.box.shape
+        self.act_dim = self.env.action_space.shape[0]
+        # Action limit for clamping: critically, assumes all dimensions share the same bound!
+        self.act_limit = self.env.action_space.high[0]
+        # Fank: only need to seed action space
+        self.env.action_space.seed(seed)
+        self.test_env.action_space.seed(seed)
+        # Create actor-critic module and target networks
+        self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
+        self.ac_targ = deepcopy(self.ac)
+        
+        # vehicle_type
+        self.vehicle_type = config["vehicle_type"]
         
         # set up summary writer
         self.exp_name = logger_kwargs['exp_name']
@@ -424,10 +206,7 @@ class SAC_ASTAR:
         self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
 
         # Experience buffer
-        if self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-            self.replay_buffer = ImageReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
-        else:
-            self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
+        self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
         
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
@@ -483,41 +262,31 @@ class SAC_ASTAR:
             print("Using pretrained model from {}".format(pretrained_file))
             self.load(pretrained_file)
             self.ac_targ = deepcopy(self.ac)
+            
+        self.astar_mp_steps = astar_mp_steps
+        self.astar_N_steps = astar_N_steps
+        self.astar_max_iter = astar_max_iter
+        self.astar_heuristic_type = astar_heuristic_type
         print("Running off-policy RL algorithm: {}".format(self.algo))
     
 
     # Set up function for computing SAC Q-losses
     def compute_loss_q(self, data):
-        if self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-            o, o_image, a, r, o2, o2_image, d = data['obs'], data['obs_image'], data['act'], data['rew'], data['obs2'], data['obs2_image'], data['done']
-            q1 = self.ac.q1(o,o_image,a)
-            q2 = self.ac.q2(o,o_image,a)
-        
-        else: 
-            o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
-    
-            q1 = self.ac.q1(o,a)
-            q2 = self.ac.q2(o,a)
+        o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
+
+        q1 = self.ac.q1(o,a)
+        q2 = self.ac.q2(o,a)
 
         # Bellman backup for Q functions
         with torch.no_grad():
-            if self.env_name.startswith('cluttered') and self.env.unwrapped.config["use_rgb"]:
-                # Target actions come from *current* policy
-                a2, logp_a2 = self.ac.pi(o2, o2_image)
-                # Target Q-values
-                q1_pi_targ = self.ac_targ.q1(o2, o2_image, a2)
-                q2_pi_targ = self.ac_targ.q2(o2, o2_image, a2)
-                q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-                backup = r + self.gamma * (1 - d) * (q_pi_targ - self.alpha * logp_a2)
-            else:
-                # Target actions come from *current* policy
-                a2, logp_a2 = self.ac.pi(o2)
+            # Target actions come from *current* policy
+            a2, logp_a2 = self.ac.pi(o2)
 
-                # Target Q-values
-                q1_pi_targ = self.ac_targ.q1(o2, a2)
-                q2_pi_targ = self.ac_targ.q2(o2, a2)
-                q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
-                backup = r + self.gamma * (1 - d) * (q_pi_targ - self.alpha * logp_a2)
+            # Target Q-values
+            q1_pi_targ = self.ac_targ.q1(o2, a2)
+            q2_pi_targ = self.ac_targ.q2(o2, a2)
+            q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
+            backup = r + self.gamma * (1 - d) * (q_pi_targ - self.alpha * logp_a2)
 
         # MSE loss against Bellman backup
         loss_q1 = ((q1 - backup)**2).mean()
@@ -533,16 +302,10 @@ class SAC_ASTAR:
 
     # Set up function for computing SAC pi loss
     def compute_loss_pi(self, data):
-        if self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-            o, o_image = data['obs'], data['obs_image']
-            pi, logp_pi = self.ac.pi(o, o_image)
-            q1_pi = self.ac.q1(o, o_image, pi)
-            q2_pi = self.ac.q2(o, o_image, pi)
-        else:   
-            o = data['obs']
-            pi, logp_pi = self.ac.pi(o)
-            q1_pi = self.ac.q1(o, pi)
-            q2_pi = self.ac.q2(o, pi)
+        o = data['obs']
+        pi, logp_pi = self.ac.pi(o)
+        q1_pi = self.ac.q1(o, pi)
+        q2_pi = self.ac.q2(o, pi)
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
@@ -618,13 +381,8 @@ class SAC_ASTAR:
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
     def get_action(self, o, deterministic=False, rgb_image=None):
-        if self.env_name.startswith('cluttered') and self.env.unwrapped.config["use_rgb"]:
-            # the only different env is the cluttered env with use_rgb image wanted
-            return self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(self.device), torch.as_tensor(rgb_image, dtype=torch.float32).to(self.device),
-                      deterministic)
-        else:
-            return self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(self.device), 
-                        deterministic)
+        return self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(self.device), 
+                    deterministic)
 
     def test_agent(self, global_steps):
         average_ep_ret = 0.0
@@ -636,15 +394,8 @@ class SAC_ASTAR:
             o, info = self.test_env.reset(seed=j)
             terminated, truncated, ep_ret, ep_len = False, False, 0, 0
             while not(terminated or truncated):
-                # Take deterministic actions at test time 
-                if self.env_name.startswith('cluttered') and not self.env.unwrapped.config["use_rgb"]:
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), True))
-                elif self.env_name.startswith('cluttered') and self.env.unwrapped.config["use_rgb"]:
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), True, rgb_image=o["achieved_rgb_image"]))
-                elif self.env_name.startswith("meta"):
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]), True))
-                else:  
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True))
+                # Take deterministic actions at test time
+                o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]), True))
                 ep_ret += r
                 ep_len += 1
             average_ep_ret += ep_ret
@@ -681,26 +432,6 @@ class SAC_ASTAR:
         #     pass
         self.logger.dump_tabular()
         
-    def add_expert_trajectory_to_buffer(self, o):
-        # Currently not used
-        goal = o["desired_goal"]
-        input = o["observation"]
-        if self.vehicle_type == "one_trailer":
-            pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
-        elif self.vehicle_type == "three_trailer":
-            pack_transition_list = query_hybrid_astar_three_trailer(input, goal)
-        if pack_transition_list is None:
-            # print("Failed Finding Astar Episode")
-            pass
-        else:
-            print("Astar Episode Length:", len(pack_transition_list))
-            with self.lock:
-                for transition in pack_transition_list:
-                    o, a, o2, r, d = transition
-                    self.replay_buffer.store(o, a.astype(np.float32), r, o2, d)
-                self.add_astar_number += 1
-                print("Add to Replay Buffer:", self.add_astar_number)
-        
     
     def add_results_to_buffer(self, results):
         # only add reconstruct for requiring image
@@ -708,16 +439,9 @@ class SAC_ASTAR:
             if pack_transition_list is None:
                 pass
             else:
-                if self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-                    for transition in pack_transition_list:
+                for transition in pack_transition_list:
                         o, a, o2, r, d = transition
-                        o_image = self.env.unwrapped.reconstruct_image_from_observation(o.astype(np.float32))
-                        o2_image = self.env.unwrapped.reconstruct_image_from_observation(o2.astype(np.float32))
-                        self.replay_buffer.store(o.astype(np.float32), o_image, a.astype(np.float32), r, o2.astype(np.float32), o2_image, d)
-                else:
-                    for transition in pack_transition_list:
-                            o, a, o2, r, d = transition
-                            self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
+                        self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
             self.add_astar_number += 1
         print("Add to Replay Buffer:", self.add_astar_number)
         
@@ -736,10 +460,7 @@ class SAC_ASTAR:
             self.add_astar_number = 0
             # to Fasten the code, we first sample the all the start list
             encounter_start_list = []
-            if self.env_name.startswith("meta"):
-                encounter_start_list.append((o, info["obstacles_info"]))
-            else:
-                encounter_start_list.append(o)
+            encounter_start_list.append((o, info["obstacles_info"]))
             # add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
             # add_thread.start()
             # astar_result = find_expert_trajectory(o, self.vehicle_type)
@@ -753,35 +474,12 @@ class SAC_ASTAR:
         for t in range(total_steps):
             
             
-            # # test code
-            # # Clear the result at first
-            # encounter_start_list = []
-            # for j in range(2):
-            #     o, _ = self.test_env.reset(seed=j) # may need to change to test_env
-            #     encounter_start_list.append(o)
-            # print("Start Collecting Buffer from Astar(not related to the episode)")
-            # t1 = time.time()
-            # # astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
-            # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
-            # self.add_results_to_buffer(astar_results)
-            # t2 = time.time()
-            # print("done plan:", t2 - t1)
-            # break
-            
-            
             
             # Until start_steps have elapsed, randomly sample actions
             # from a uniform distribution for better exploration. Afterwards, 
             # use the learned policy. 
             if t > self.start_steps:
-                if self.env_name.startswith("cluttered") and not self.env.unwrapped.config["use_rgb"]:
-                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]))
-                elif self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), rgb_image=o["achieved_rgb_image"])
-                elif self.env_name.startswith("meta"):
-                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]))
-                else:
-                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]))
+                a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]))
             else:
                 a = self.env.action_space.sample()
 
@@ -799,22 +497,10 @@ class SAC_ASTAR:
 
             # Store experience to replay buffer
             #TODO: pad the observation to 6-dim
-            if self.env_name.startswith("cluttered") and not self.env.unwrapped.config["use_rgb"]:
-                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['obstacles_info']]), d)
-            elif self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), o['achieved_rgb_image'], a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['obstacles_info']]), o2["achieved_rgb_image"], d)
-            elif self.env_name.startswith("meta"):
-                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['collision_metric']]), d)
-            else:
-                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d)
+            self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['collision_metric']]), d)
             if self.whether_her:
                 # currently not used
-                if self.env_name.startswith("cluttered") and not self.env.unwrapped.config["use_rgb"]:
-                    temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['obstacles_info']]), d, info['crashed']))
-                elif self.env_name.startswith("cluttered") and self.env.unwrapped.config["use_rgb"]:
-                    temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['obstacles_info']]), o["achieved_rgb_image"], a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['obstacles_info']]), o2["achieved_rgb_image"], d, info['crashed']))
-                else:
-                    temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info['crashed']))
+                temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info['crashed']))
                 # self.her_process_episode(temp_buffer)
             # Super critical, easy to overlook step: make sure to update 
             # most recent observation!
@@ -833,14 +519,10 @@ class SAC_ASTAR:
                 # Two Strategy for astar
                 if self.whether_astar and not self.astar_ablation:
                     # TODO: change for testing
-                    if self.finish_episode_number % 2 == 0: # put this number smaller
+                    if self.finish_episode_number % 1000 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
-                        if self.env_name.startswith("meta"):
-                            astar_results = [find_expert_trajectory_meta(o, self.env.unwrapped.map, self.env.unwrapped.config["N_steps"]) for o in encounter_start_list]
-                            
-                            # astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.env.unwrapped.map, self.env.unwrapped.config["N_steps"]) for o in encounter_start_list)
-                        else:
-                            astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
+                        # astar_results = [find_expert_trajectory_meta(o, self.env.unwrapped.map, self.astar_mp_steps, self.astar_N_steps, self.astar_max_iter, self.astar_heuristic_type) for o in encounter_start_list]
+                        astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.env.unwrapped.map, self.astar_mp_steps, self.astar_N_steps, self.astar_max_iter, self.astar_heuristic_type) for o in encounter_start_list)
                         # Clear the result
                         encounter_start_list = []
                         self.add_results_to_buffer(astar_results)
@@ -853,22 +535,17 @@ class SAC_ASTAR:
                         for _ in range(20):
                             o, info = self.test_env.reset(seed=(self.big_number + self.count_unrelated_task)) # may need to change to test_env
                             self.count_unrelated_task += 1
-                            if self.env_name.startswith("meta"):
-                                encounter_start_list.append((o, info["obstacles_info"]))
-                            else:
-                                encounter_start_list.append(o)
-                        if self.env_name.startswith("meta"):
-                            astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.vehicle_type) for o in encounter_start_list)
-                        else:
-                            astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory)(o, self.vehicle_type) for o in encounter_start_list)
+                            encounter_start_list.append((o, info["obstacles_info"]))
+                            
+                        
+                        astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.vehicle_type) for o in encounter_start_list)
+                        
                         # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
                         self.add_results_to_buffer(astar_results)
                 o, info = self.env.reset(seed=(self.seed + t))
                 if self.whether_astar and not self.astar_ablation:
-                    if self.env_name.startswith("meta"):
-                        encounter_start_list.append((o, info["obstacles_info"]))
-                    else:
-                        encounter_start_list.append(o)
+                    encounter_start_list.append((o, info["obstacles_info"]))
+                    
                 episode_start_time = time.time()
                 # if self.whether_astar:
                 #     # try:

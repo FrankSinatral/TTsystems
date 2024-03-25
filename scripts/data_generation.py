@@ -21,6 +21,7 @@ import yaml
 from tractor_trailer_envs import register_tt_envs
 register_tt_envs()
 from rl_agents.sac.sac_astar import find_expert_trajectory
+from rl_agents.query_expert import find_expert_trajectory_meta
 import planner_zoo.hybrid_astar_planner.hybrid_astar_test_version as alg_test
 def cyclic_angle_distance(angle1, angle2):
     """calculate the cyclic distance between two angles"""
@@ -114,6 +115,7 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
         "max_steer": 0.6, #[rad] maximum steering angle
         "v_max": 2.0, #[m/s] maximum velocity 
         "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+        "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
         "xi_max": (np.pi) / 4, # jack-knife constraint  
     }
     transition_list = []
@@ -579,7 +581,7 @@ def restore_obstacles_info(flattened_info):
 def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
-    edge = 50
+    edge = 80
     map_env = [(-edge, -edge), (edge, -edge), (-edge, edge), (edge, edge)]
     Map = tt_envs.MapBound(map_env)
     
@@ -625,6 +627,7 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None):
             "max_steer": 0.6, #[rad] maximum steering angle
             "v_max": 2.0, #[m/s] maximum velocity 
             "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+            "safe_metric": 3.0, #[m] the safe distance from the vehicle to obstacle
             "xi_max": (np.pi) / 4, # jack-knife constraint  
         },
        "acceptance_error": 0.5,
@@ -680,12 +683,68 @@ if __name__ == "__main__":
     # print(1)
     
     
-    with open("configs/envs/reaching_v0_eval.yaml", 'r') as file:
+    with open("configs/envs/meta_reaching_v0_eval.yaml", 'r') as file:
         config = yaml.safe_load(file)
-    env = gym.make("tt-reaching-v0", config=config)
-    obs, _ = env.reset(seed=50)
-    pack_transition_list = find_expert_trajectory(obs)
-    print(len(pack_transition_list))
+        
+    # with open("configs/planner/astar_planner.yaml", 'r') as file:
+    #     astar_config = yaml.safe_load(file)
+    env = gym.make("tt-meta-reaching-v0", config=config)
+    
+    # task_list = []
+    # for i in range(100):
+    #     obs, info = env.reset(seed=i)
+    #     task_list.append((obs, info["obstacles_info"]))
+        
+    # with open("task_list.pickle", 'wb') as f:
+    #     pickle.dump(task_list, f)
+        
+    # astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, env.unwrapped.map, astar_config["mp_step"], astar_config["N_steps"], astar_config["max_iter"], astar_config["heuristic_type"]) for o in task_list)
+    # # find_expert_trajectory_meta((obs, info["obstacles_info"]), env.unwrapped.map, astar_config["mp_step"], astar_config["N_steps"], 
+    # #                                 astar_config["max_iter"], astar_config["heuristic_type"])
+        
+        
+    # with open("task_result_list.pickle", 'wb') as f:
+    #     pickle.dump(astar_results, f)
+    # obs, _ = env.reset(seed=17)
+    # env.unwrapped.render()
+    # env.unwrapped.real_render()
+    
+    # with open("task_list.pickle", 'rb') as f:
+    #     task_list = pickle.load(f)
+    # with open("task_result_list.pickle", 'rb') as f:
+    #     astar_results = pickle.load(f)
+        
+    # total_results = []  
+    # for task, astar_result in zip(task_list, astar_results):
+    #     if astar_result is not None:
+    #         dict_result = {"task": task, "astar_result": astar_result, "image_result": []}
+    #         goal_with_obstacles_info_list = []
+    #         obs, obstacles_info = task
+    #         goal_with_obstacles_info_list.append({"goal": obs["desired_goal"], "obstacles_info": obstacles_info})
+    #         env.unwrapped.update_goal_with_obstacles_info_list(goal_with_obstacles_info_list)
+    #         obs, info = env.reset()
+    #         image = env.unwrapped.render_jingyu()
+    #         dict_result["image_result"].append(image)
+    #         for transition in astar_result:
+    #             o, a, o2, r, d = transition
+    #             env.step(a)
+    #             image = env.unwrapped.render_jingyu()
+    #             dict_result["image_result"].append(image)
+    #         total_results.append(dict_result)
+        
+    # with open("total_results.pickle", "wb") as f:
+    #     pickle.dump(total_results, f)
+        
+    
+    
+    with open("total_results.pickle", "rb") as f:
+        total_results = pickle.load(f)
+    
+    print(1)
+    
+    
+    # pack_transition_list = find_expert_trajectory(obs)
+    # print(len(pack_transition_list))
     
     
     # start_lists = []
