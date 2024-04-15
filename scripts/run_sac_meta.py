@@ -29,7 +29,7 @@ def main():
     # args = parser.parse_args()
     # with open("configs/envs/meta_reaching_v0.yaml", 'r') as file:
     #     config = yaml.safe_load(file)
-    with open("configs/agents/sac_astar_meta.yaml", 'r') as file:
+    with open("configs/agents/training/rl1_one_hot.yaml", 'r') as file:
         config_algo = yaml.safe_load(file)
     
     env_name = config_algo['env_name']
@@ -54,39 +54,80 @@ def main():
     }
 
     # to change the environment, change the env_fn
-    agent = agents.SAC_ASTAR_META(env_fn=gym_meta_reaching_tt_env_fn,
-                algo=config_algo['algo_name'],
-                ac_kwargs=ac_kwargs,
-                seed=seed,
-                steps_per_epoch=config_algo['sac_steps_per_epoch'],
-                epochs=config_algo['sac_epochs'],
-                replay_size=config_algo['replay_size'],
-                gamma=config_algo['gamma'],
-                polyak=config_algo['polyak'],
-                lr=config_algo['lr'],
-                alpha=config_algo['alpha'],
-                batch_size=config_algo['batch_size'],
-                start_steps=config_algo['start_steps'],
-                update_after=config_algo['update_after'],
-                update_every=config_algo['update_every'],
-                # missing max_ep_len
-                logger_kwargs=logger_kwargs, 
-                save_freq=config_algo['save_freq'],
-                num_test_episodes=config_algo['num_test_episodes'],
-                log_dir=config_algo['log_dir'],
-                whether_her=config_algo['whether_her'],
-                use_automatic_entropy_tuning=config_algo['use_auto'],
-                env_name=config_algo['env_name'],
-                pretrained=config_algo['pretrained'],
-                pretrained_itr=config_algo['pretrained_itr'],
-                pretrained_dir=config_algo['pretrained_dir'],
-                whether_astar=config_algo['whether_astar'],
-                astar_ablation=config_algo['astar_ablation'],
-                astar_mp_steps=config_algo['astar_mp_steps'],
-                astar_N_steps=config_algo['astar_N_steps'],
-                astar_max_iter=config_algo['astar_max_iter'],
-                astar_heuristic_type=config_algo['astar_heuristic_type'],
-                config=config_algo['env_config'])
+    if config_algo['env_config']['use_gray']:
+        agent = agents.SAC_ASTAR_META(env_fn=gym_meta_reaching_tt_env_fn,
+            algo=config_algo['algo_name'],
+            actor_critic=core.CNNActorCritic,
+            ac_kwargs=ac_kwargs,
+            seed=seed,
+            steps_per_epoch=config_algo['sac_steps_per_epoch'],
+            epochs=config_algo['sac_epochs'],
+            replay_size=config_algo['replay_size'],
+            gamma=config_algo['gamma'],
+            polyak=config_algo['polyak'],
+            lr=config_algo['lr'],
+            alpha=config_algo['alpha'],
+            batch_size=config_algo['batch_size'],
+            start_steps=config_algo['start_steps'],
+            update_after=config_algo['update_after'],
+            update_every=config_algo['update_every'],
+            # missing max_ep_len
+            logger_kwargs=logger_kwargs, 
+            save_freq=config_algo['save_freq'],
+            num_test_episodes=config_algo['num_test_episodes'],
+            log_dir=config_algo['log_dir'],
+            whether_her=config_algo['whether_her'],
+            use_automatic_entropy_tuning=config_algo['use_auto'],
+            env_name=config_algo['env_name'],
+            pretrained=config_algo['pretrained'],
+            pretrained_itr=config_algo['pretrained_itr'],
+            pretrained_dir=config_algo['pretrained_dir'],
+            whether_astar=config_algo['whether_astar'],
+            astar_ablation=config_algo['astar_ablation'],
+            astar_mp_steps=config_algo['astar_mp_steps'],
+            astar_N_steps=config_algo['astar_N_steps'],
+            astar_max_iter=config_algo['astar_max_iter'],
+            astar_heuristic_type=config_algo['astar_heuristic_type'],
+            whether_dataset=config_algo['whether_dataset'],
+            dataset_path=config_algo['dataset_path'],
+            config=config_algo['env_config'])
+    else:
+        agent = agents.SAC_ASTAR_META(env_fn=gym_meta_reaching_tt_env_fn,
+            algo=config_algo['algo_name'],
+            actor_critic=core.MLPActorCritic,
+            ac_kwargs=ac_kwargs,
+            seed=seed,
+            steps_per_epoch=config_algo['sac_steps_per_epoch'],
+            epochs=config_algo['sac_epochs'],
+            replay_size=config_algo['replay_size'],
+            gamma=config_algo['gamma'],
+            polyak=config_algo['polyak'],
+            lr=config_algo['lr'],
+            alpha=config_algo['alpha'],
+            batch_size=config_algo['batch_size'],
+            start_steps=config_algo['start_steps'],
+            update_after=config_algo['update_after'],
+            update_every=config_algo['update_every'],
+            # missing max_ep_len
+            logger_kwargs=logger_kwargs, 
+            save_freq=config_algo['save_freq'],
+            num_test_episodes=config_algo['num_test_episodes'],
+            log_dir=config_algo['log_dir'],
+            whether_her=config_algo['whether_her'],
+            use_automatic_entropy_tuning=config_algo['use_auto'],
+            env_name=config_algo['env_name'],
+            pretrained=config_algo['pretrained'],
+            pretrained_itr=config_algo['pretrained_itr'],
+            pretrained_dir=config_algo['pretrained_dir'],
+            whether_astar=config_algo['whether_astar'],
+            astar_ablation=config_algo['astar_ablation'],
+            astar_mp_steps=config_algo['astar_mp_steps'],
+            astar_N_steps=config_algo['astar_N_steps'],
+            astar_max_iter=config_algo['astar_max_iter'],
+            astar_heuristic_type=config_algo['astar_heuristic_type'],
+            whether_dataset=config_algo['whether_dataset'],
+            dataset_path=config_algo['dataset_path'],
+            config=config_algo['env_config'])
     agent.run()
         
     print(1)

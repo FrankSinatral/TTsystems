@@ -51,6 +51,6 @@ jack_knife_penalty: -20
 collision_penalty: -20
 use_rgb: false
 observation: one_hot_representation
-number_obstacles: 4
+number_obstacles: 0
 max_length: 20
 min_length: 1

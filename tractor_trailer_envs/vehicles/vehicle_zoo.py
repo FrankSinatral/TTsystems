@@ -9,6 +9,133 @@ import tractor_trailer_envs.map_and_obstacles.settings as settings
 from matplotlib.axes import Axes
 from typing import Tuple, List
 
+def point_to_rectangle_distance(cx, cy, l, d, yaw, ox, oy):
+    # Transform the points to the rectangle's local coordinate system
+    ox_local = (ox - cx) * np.cos(yaw) + (oy - cy) * np.sin(yaw)
+    oy_local = -(ox - cx) * np.sin(yaw) + (oy - cy) * np.cos(yaw)
+
+    # Initialize the distance array with zeros
+    # TODO: this has to be changed
+    distances = 100 * np.ones((len(ox), 8))
+
+    # Calculate the distance to each region
+    # the i stands for the index of the point
+    for i in range(len(ox)):
+        # the right corner: yaw's direction
+        if ox_local[i] >= l / 2 and oy_local[i] <= d / 2 and oy_local[i] >= - d / 2:
+            distances[i, 0] = np.abs(ox_local[i] - l / 2)
+        # the top-right corner
+        elif ox_local[i] >= l / 2 and oy_local[i] >= d / 2:
+            distances[i, 1] = np.sqrt((ox_local[i] - l / 2)**2 + (oy_local[i] - d / 2)**2)
+        # the top corner
+        elif ox_local[i] <= l / 2 and ox_local[i] >= -l / 2 and oy_local[i] >= d / 2:
+            distances[i, 2] = np.abs(oy_local[i] - d / 2)
+        # the top-left corner
+        elif ox_local[i] <= -l / 2 and oy_local[i] >= d / 2:
+            distances[i, 3] = np.sqrt((ox_local[i] + l / 2)**2 + (oy_local[i] - d / 2)**2)
+        # the left corner
+        elif ox_local[i] <= -l / 2 and oy_local[i] <= d / 2 and oy_local[i] >= -d / 2:
+            distances[i, 4] = np.abs(ox_local[i] + l / 2)
+        # the bottom-left corner
+        elif ox_local[i] <= -l / 2 and oy_local[i] <= -d / 2:
+            distances[i, 5] = np.sqrt((ox_local[i] + l / 2)**2 + (oy_local[i] + d / 2)**2)
+        # the bottom corner
+        elif ox_local[i] <= l / 2 and  ox_local[i] >= -l / 2 and oy_local[i] <= -d / 2:
+            distances[i, 6] = np.abs(oy_local[i] + d / 2)
+        # the bottom-right corner
+        elif ox_local[i] >= l / 2 and oy_local[i] <= -d / 2:
+            # The point is above the rectangle
+            distances[i, 7] = np.sqrt((ox_local[i] - l / 2)**2 + (oy_local[i] + d / 2)**2)
+
+    return distances.min(axis=0)
+
+def point_to_rectangle_distance_vectorized(cx, cy, l, d, yaw, ox, oy):
+    ox = np.array(ox)
+    oy = np.array(oy)
+    
+    # Transform the points to the rectangle's local coordinate system
+    ox_local = (ox - cx) * np.cos(yaw) + (oy - cy) * np.sin(yaw)
+    oy_local = -(ox - cx) * np.sin(yaw) + (oy - cy) * np.cos(yaw)
+    
+    
+    # Check if any point is inside the rectangle
+    mask_inside = (ox_local <= l / 2) & (ox_local >= -l / 2) & (oy_local <= d / 2) & (oy_local >= -d / 2)
+    if np.any(mask_inside):
+        return np.zeros(8)
+    
+    
+    # If coming to here, there is no collision happened
+    # Initialize the distances matrix with infinity
+    distances = np.full((len(ox), 8), np.inf)
+
+    # Right side
+    mask = (ox_local >= l / 2) & (oy_local <= d / 2) & (oy_local >= -d / 2)
+    distances[mask, 0] = np.abs(ox_local[mask] - l / 2)
+
+    # Top-right corner
+    mask = (ox_local >= l / 2) & (oy_local >= d / 2)
+    distances[mask, 1] = np.sqrt((ox_local[mask] - l / 2)**2 + (oy_local[mask] - d / 2)**2)
+
+    # Top side
+    mask = (ox_local <= l / 2) & (ox_local >= -l / 2) & (oy_local >= d / 2)
+    distances[mask, 2] = np.abs(oy_local[mask] - d / 2)
+
+    # Top-left corner
+    mask = (ox_local <= -l / 2) & (oy_local >= d / 2)
+    distances[mask, 3] = np.sqrt((ox_local[mask] + l / 2)**2 + (oy_local[mask] - d / 2)**2)
+
+    # Left side
+    mask = (ox_local <= -l / 2) & (oy_local <= d / 2) & (oy_local >= -d / 2)
+    distances[mask, 4] = np.abs(ox_local[mask] + l / 2)
+
+    # Bottom-left corner
+    mask = (ox_local <= -l / 2) & (oy_local <= -d / 2)
+    distances[mask, 5] = np.sqrt((ox_local[mask] + l / 2)**2 + (oy_local[mask] + d / 2)**2)
+
+    # Bottom side
+    mask = (ox_local <= l / 2) & (ox_local >= -l / 2) & (oy_local <= -d / 2)
+    distances[mask, 6] = np.abs(oy_local[mask] + d / 2)
+
+    # Bottom-right corner
+    mask = (ox_local >= l / 2) & (oy_local <= -d / 2)
+    distances[mask, 7] = np.sqrt((ox_local[mask] - l / 2)**2 + (oy_local[mask] + d / 2)**2)
+
+    # Return the minimum distance for each of the 8 regions
+    return np.min(distances, axis=0)
+
+
+def shift_one_hot_representation(x, y, n):
+    "利用这个函数将坐标表示为one-hot-vector"
+    # 使用arctan2来计算角度，该函数会返回[-π, π]之间的角度
+    angle = np.arctan2(y, x)
+    
+    # 如果角度为负，将其转换为[0, 2π)范围内的角度
+    if angle < 0:
+        angle += 2 * np.pi
+        
+    # 将[0, 2π)范围分成n等分，每份的角度范围
+    angle_increment = (2 * np.pi) / n
+    
+    # 计算角度所在的范围
+    index = int(angle // angle_increment)
+    
+    # 创建一个n维的零向量
+    one_hot_vector = np.zeros(n)
+    
+    # 将对应范围的索引设置为1
+    one_hot_vector[index] = 1
+    
+    return one_hot_vector
+
+def one_hot_or(vector_a, vector_b):
+    # 确保两个向量的维度相同
+    if len(vector_a) != len(vector_b):
+        raise ValueError("The dimensions of the two vectors must be the same.")
+    
+    # 执行 point-wise 或运算
+    or_vector = np.logical_or(vector_a, vector_b).astype(int)
+    return or_vector
+
 class SingleTractor(Vehicle):
     def __init__(self, config):
         super().__init__()
@@ -1518,7 +1645,7 @@ class ThreeTrailer(Vehicle):
         return False
     
     
-    def collision_metric(self, ox: List[float], oy: List[float]) -> bool:
+    def collision_metric(self, ox: List[float], oy: List[float]):
         '''
         give a collision metric for each tractor and trailer
         Inputs:
@@ -1623,6 +1750,150 @@ class ThreeTrailer(Vehicle):
         
 
         return np.array([tractor_collision_metric, trailer1_collision_metric, trailer2_collision_metric, trailer3_collision_metric], dtype=np.float32)
+    
+    def one_hot_representation(self, d, number, ox: List[float], oy: List[float]):
+        '''
+        give a collision metric for each tractor and trailer
+        Inputs:
+        x, y, yaw, yawt1, yawt2, yawt3: list
+        first use kdtree to find obstacle index
+        then use a more complicated way to test whether to collide
+        
+        one-hot-representation: d: the safe distance
+        number: the size of number
+        '''
+        
+        points = np.array(list(zip(ox, oy)))
+        tree = cKDTree(points)
+        x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        d = self.SAFE_METRIC
+        
+        # first trailer test collision
+        deltal1 = (self.RTF + self.RTB) / 2.0 #which is exactly C.RTR
+        rt1 = (self.RTB - self.RTF) / 2.0 + d #half length of trailer1 plus d
+
+        ctx1 = x - deltal1 * np.cos(yawt1)
+        cty1 = y - deltal1 * np.sin(yawt1)
+
+        idst1 = tree.query_ball_point([ctx1, cty1], rt1)
+        trailer1_one_hot = np.zeros(number)
+        if idst1:
+            for i in idst1:
+                xot1 = ox[i] - ctx1
+                yot1 = oy[i] - cty1
+
+                dx_trail1 = xot1 * np.cos(yawt1) + yot1 * np.sin(yawt1)
+                dy_trail1 = -xot1 * np.sin(yawt1) + yot1 * np.cos(yawt1)
+                new_trailer1_one_hot = shift_one_hot_representation(dx_trail1, dy_trail1, number)
+                trailer1_one_hot = one_hot_or(new_trailer1_one_hot, trailer1_one_hot)
+
+            
+        # check the second trailer collision
+        deltal2 = (self.RTF2 + self.RTB2) / 2.0
+        rt2 = (self.RTB2 - self.RTF2) / 2.0 + d
+        
+        ctx2 = ctx1 - deltal2 * np.cos(yawt2)
+        cty2 = cty1 - deltal2 * np.sin(yawt2)
+        
+        idst2 = tree.query_ball_point([ctx2, cty2], rt2)
+        trailer2_one_hot = np.zeros(number)
+        if idst2:
+            for i in idst2:
+                xot2 = ox[i] - ctx2
+                yot2 = oy[i] - cty2
+                
+                dx_trail2 = xot2 * np.cos(yawt2) + yot2 * np.sin(yawt2)
+                dy_trail2 = -xot2 * np.cos(yawt2) + yot2 * np.cos(yawt2)
+                new_trailer2_one_hot = shift_one_hot_representation(dx_trail2, dy_trail2, number)
+                trailer2_one_hot = one_hot_or(new_trailer2_one_hot, trailer2_one_hot)
+                    
+        # check the third trailer collision
+        deltal3 = (self.RTF3 + self.RTB3) / 2.0
+        rt3 = (self.RTB3 - self.RTF3) / 2.0 + d
+        
+        ctx3 = ctx2 - deltal3 * np.cos(yawt3)
+        cty3 = cty2 - deltal3 * np.sin(yawt3)
+        
+        idst3 = tree.query_ball_point([ctx3, cty3], rt3)
+        trailer3_one_hot = np.zeros(number)
+        if idst3:
+            for i in idst3:
+                xot3 = ox[i] - ctx3
+                yot3 = oy[i] - cty3
+                
+                dx_trail3 = xot3 * np.cos(yawt3) + yot3 * np.sin(yawt3)
+                dy_trail3 = -xot3 * np.cos(yawt3) + yot3 * np.cos(yawt3)
+                new_trailer3_one_hot = shift_one_hot_representation(dx_trail3, dy_trail3, number)
+                trailer3_one_hot = one_hot_or(new_trailer3_one_hot, trailer3_one_hot)
+                    
+        # check the tractor collision
+        deltal = (self.RF - self.RB) / 2.0
+        rc = (self.RF + self.RB) / 2.0 + d
+
+        cx = x + deltal * np.cos(yaw)
+        cy = y + deltal * np.sin(yaw)
+
+        ids = tree.query_ball_point([cx, cy], rc)
+        tractor_one_hot = np.zeros(number)
+        if ids:
+            for i in ids:
+                xo = ox[i] - cx
+                yo = oy[i] - cy
+
+                dx_car = xo * np.cos(yaw) + yo * np.sin(yaw)
+                dy_car = -xo * np.sin(yaw) + yo * np.cos(yaw)
+                new_tractor_one_hot = shift_one_hot_representation(dx_car, dy_car, number)
+                tractor_one_hot = one_hot_or(tractor_one_hot, new_tractor_one_hot)
+        return np.concatenate([tractor_one_hot, trailer1_one_hot, trailer2_one_hot, trailer3_one_hot], axis=0).astype(np.float32)
+    
+    def lidar_detection(self, ox: List[float], oy: List[float]):
+        """
+        use the distance to rectangle
+        to give the exact distance of each erea,
+        since there are 3trialers, vector is a 32-dim vector astype=np.float32
+        """
+        x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        
+        # first trailer lidar detection
+        deltal1 = (self.RTF + self.RTB) / 2.0 #which is exactly C.RTR
+        rt1 = (self.RTB - self.RTF) / 2.0  #half length of trailer1
+
+        ctx1 = x - deltal1 * np.cos(yawt1)
+        cty1 = y - deltal1 * np.sin(yawt1)
+        
+        trailer1_lidar_detection = point_to_rectangle_distance_vectorized(ctx1, cty1, 2 * rt1, self.W, yawt1, ox, oy)
+        # trailer1_lidar_detection_v = point_to_rectangle_distance_vectorized(ctx1, cty1, 2 * rt1, self.W, yawt1, ox, oy)
+        
+        # the second trailer lidar detection
+        deltal2 = (self.RTF2 + self.RTB2) / 2.0
+        rt2 = (self.RTB2 - self.RTF2) / 2.0
+        
+        ctx2 = ctx1 - deltal2 * np.cos(yawt2)
+        cty2 = cty1 - deltal2 * np.sin(yawt2)
+        
+        trailer2_lidar_detection = point_to_rectangle_distance_vectorized(ctx2, cty2,  2 * rt2, self.W, yawt2, ox, oy)
+        # trailer2_lidar_detection_v = point_to_rectangle_distance_vectorized(ctx2, cty2, 2 * rt2, self.W, yawt2, ox, oy)
+                 
+        # the third trailer lidar detection
+        deltal3 = (self.RTF3 + self.RTB3) / 2.0
+        rt3 = (self.RTB3 - self.RTF3) / 2.0
+        
+        ctx3 = ctx2 - deltal3 * np.cos(yawt3)
+        cty3 = cty2 - deltal3 * np.sin(yawt3)
+        
+        trailer3_lidar_detection = point_to_rectangle_distance_vectorized(ctx3, cty3, 2 * rt3, self.W, yawt3, ox, oy)
+        # trailer3_lidar_detection_v = point_to_rectangle_distance_vectorized(ctx3, cty3, 2 * rt3, self.W, yawt3, ox, oy)
+                    
+        # the tractor lidar detection
+        deltal = (self.RF - self.RB) / 2.0
+        rc = (self.RF + self.RB) / 2.0
+
+        cx = x + deltal * np.cos(yaw)
+        cy = y + deltal * np.sin(yaw)
+
+        tractor_lidar_detection = point_to_rectangle_distance_vectorized(cx, cy, 2 * rc, self.W, yaw, ox, oy)
+        # tractor_lidar_detection_v = point_to_rectangle_distance_vectorized(cx, cy, 2 * rc, self.W, yaw, ox, oy)
+        return np.concatenate([tractor_lidar_detection, trailer1_lidar_detection, trailer2_lidar_detection, trailer3_lidar_detection], axis=0).astype(np.float32)
 
 if __name__ == "__main__":
     parser = get_config()

@@ -1,7 +1,7 @@
 allow_backward: true
 distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
 reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
-max_episode_steps: 60
+max_episode_steps: 100
 N_steps: 10
 controlled_vehicle_config:
   max_steer: 0.6
@@ -50,7 +50,7 @@ verbose: false
 jack_knife_penalty: -20
 collision_penalty: -20
 use_rgb: false
-observation: one_hot_representation
-number_obstacles: 4
+observation: original
+number_obstacles: 0
 max_length: 20
 min_length: 1

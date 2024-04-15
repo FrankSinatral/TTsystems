@@ -229,6 +229,7 @@ class SAC_ASTAR:
                  whether_astar=True,
                  astar_ablation=False,
                  config: dict = None,
+                 use_logger=True,
                  device = None,
                  args = None):    
         """
@@ -338,9 +339,10 @@ class SAC_ASTAR:
 
         """ 
         # TODO: we now take MPI tools out
-        self.logger = EpochLogger(**logger_kwargs)
-        # save your configuration in a json file
-        self.logger.save_config(locals()) 
+        if use_logger:
+            self.logger = EpochLogger(**logger_kwargs)
+            # save your configuration in a json file
+            self.logger.save_config(locals()) 
         if device is not None:
             self.device = device
         else:
@@ -431,7 +433,8 @@ class SAC_ASTAR:
         
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
-        self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
+        if use_logger:
+            self.logger.log('\nNumber of parameters: \t pi: %d, \t q1: %d, \t q2: %d\n'%var_counts)
         
         self.algo = algo
         # Set up optimizers for policy and q-function
@@ -483,7 +486,8 @@ class SAC_ASTAR:
             print("Using pretrained model from {}".format(pretrained_file))
             self.load(pretrained_file)
             self.ac_targ = deepcopy(self.ac)
-        print("Running off-policy RL algorithm: {}".format(self.algo))
+        if use_logger:
+            print("Running off-policy RL algorithm: {}".format(self.algo))
     
 
     # Set up function for computing SAC Q-losses

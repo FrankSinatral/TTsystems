@@ -1,4 +1,4 @@
-algo_name: 'sac_astar_meta'
+algo_name: 'rl1_one_hot'
 seed: 10
 env_name: 'meta-reaching-v0' # remember to switch script
 sac_steps_per_epoch: 50000
@@ -20,14 +20,14 @@ output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: false
-use_auto: True
+use_auto: true
 whether_astar: true
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
-astar_max_iter: 50
-astar_heuristic_type: 'traditional'
-whether_dataset: false
+astar_max_iter: 5
+astar_heuristic_type: 'mix'
+whether_dataset: true
 dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
 
 
@@ -90,6 +90,6 @@ env_config:
   use_rgb: false
   observation: one_hot_representation
   use_gray: false
-  number_obstacles: 0
+  number_obstacles: 1
   max_length: 20
   min_length: 1

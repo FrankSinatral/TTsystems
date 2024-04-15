@@ -122,6 +122,7 @@ class TractorTrailerMetaReachingEnv(Env):
         return {
             "verbose": False, 
             "vehicle_type": "single_tractor",
+            "observation": "original",
             "reward_type": 'sparse_reward',
             "act_limit": 1, 
             "distancematrix": [1.00, 1.00, 1.00, 1.00, 1.00, 1.00], # shape not change but can tune
@@ -183,6 +184,7 @@ class TractorTrailerMetaReachingEnv(Env):
             "jack_knife_penalty": 0,
             "collision_penalty": 0,
             "use_rgb": True, # whether use rgb image as an observation
+            "use_gray": False, # whether use gray image as an observation
             "number_obstacles": 2,
             "max_length": 20,
             "min_length": 1.0,
@@ -220,19 +222,64 @@ class TractorTrailerMetaReachingEnv(Env):
              for index, (item1, item2) in enumerate(zip(outer_wall_value_list, start_region_value_list)))
         
     def define_observation_space(self) -> None:
-        # observation_space (all set to 6-dim space)
+        """Define our observation space
+        """
         achieved_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         desired_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         
         # TODO: here we set the dimension of the obstacle info manually, in the future, we can make it more general
-        self.observation_space = spaces.Dict({
+        if self.observation_type == "original" and (not self.config["use_gray"]):
+            self.observation_space = spaces.Dict({
             'achieved_goal': achieved_goal_space,
             'desired_goal': desired_goal_space,
             'observation': observation_space,
-            'collision_metric': spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32),
-            'achieved_rgb_image': spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8),
         })
+        elif self.observation_type == "original" and self.config["use_gray"]:
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
+            })
+        elif self.observation_type == "one_hot_representation" and (not self.config["use_gray"]):
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'one_hot_representation': spaces.Box(low=0, high=1, shape=(32,), dtype=np.float32),
+            })
+        elif self.observation_type == "one_hot_representation" and self.config["use_gray"]:
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'one_hot_representation': spaces.Box(low=0, high=1, shape=(32,), dtype=np.float32),
+                'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
+            })
+        elif self.observation_type == "lidar_detection" and (not self.config["use_gray"]):
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'lidar_detection': spaces.Box(low=0, high=100, shape=(32,), dtype=np.float32),
+            }) # TODO: this is not always the case
+        elif self.observation_space == "lidar_detection" and self.config["use_gray"]:
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'lidar_detection': spaces.Box(low=0, high=100, shape=(32,), dtype=np.float32),
+                'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
+            })
+        else: 
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'collision_metric': spaces.Box(low=0, high=1, shape=(4,), dtype=np.float32),
+                'achieved_rgb_image': spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8),
+            })
  
     def define_action_space(self):
         # action_space
@@ -279,6 +326,8 @@ class TractorTrailerMetaReachingEnv(Env):
         else:
             self.controlled_vehicle = ThreeTrailer(self.config["controlled_vehicle_config"])
         self.yawmax = np.pi
+        
+        self.observation_type = self.config["observation"]
         self.define_observation_space()
         self.define_action_space()
         
@@ -296,6 +345,18 @@ class TractorTrailerMetaReachingEnv(Env):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
     
+    def update_start_list(self, start_list):
+        self.config["start_list"] = start_list
+        
+    def clear_start_list(self):
+        self.config["start_list"] = None
+        
+    # def update_goal_list(self, goal_list):
+    #     self.config["goal_list"] = goal_list
+        
+    # def clear_goal_list(self):
+    #     self.config["goal_list"] = None
+    
     def update_goal_with_obstacles_info_list(self, goal_with_obstales_info_list):
         # the list must be given that the elment of the list is a dict
         self.config["goal_with_obstacles_info_list"] = goal_with_obstales_info_list
@@ -304,6 +365,10 @@ class TractorTrailerMetaReachingEnv(Env):
         self.config["goal_with_obstacles_info_list"] = None
     
     def generate_ox_oy_with_map_bound(self, obstacles_info):
+        # Note that obstacels_info can be an empty list
+        """
+        obstacles_info: [[(x1, y1), (x1, y2), (x2, y2), (x2, y1)], [...]]
+        """
         ox, oy = self.map.sample_surface(0.1)
         try:
             for rectangle in obstacles_info:
@@ -362,24 +427,38 @@ class TractorTrailerMetaReachingEnv(Env):
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
             np.random.seed(kwargs['seed'])
+            
+            
+        # currently under this env, we will not use the start_list for initialization
+        if self.config["start_list"] is not None:
+            # random choose between a given goal list
+            number_start = len(self.config["start_list"])
+            selected_index = np.random.randint(0, number_start)
+            self.start = tuple(self.config["start_list"][selected_index])
+            self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
+        
         if self.config["goal_with_obstacles_info_list"] is not None:
             # the goal is given with respect with the obstacles_info,
             # but here we have to check whether there is a collision
-            number_goal_with_obstacles_info = len(self.config["goal_with_obstacles_info_list"])
-            selected_index = np.random.randint(0, number_goal_with_obstacles_info)
+            if self.config["start_list"] is None:
+                number_goal_with_obstacles_info = len(self.config["goal_with_obstacles_info_list"])
+                selected_index = np.random.randint(0, number_goal_with_obstacles_info)
+            # else use the same selected_index
             goal = self.config["goal_with_obstacles_info_list"][selected_index]["goal"]
+            # currently set the controlled vehicle to the goal configuration
             self.controlled_vehicle.reset_equilibrium(goal[0],goal[1],goal[2])
             self.goal = tuple(self.controlled_vehicle.observe())
             obstacles_info = self.config["goal_with_obstacles_info_list"][selected_index]["obstacles_info"]
             ox, oy = self.generate_ox_oy_with_map_bound(obstacles_info)
             assert not self.controlled_vehicle.is_collision(ox, oy), "goal is illegal with obstacles_info"
+            
+        
         elif self.config["obstacles_info_list"] is not None:
             # given obstacles info then sample a random goal
-            number_goal_with_obstacles_info = len(self.config["obstacles_info_list"])
-            selected_index = np.random.randint(0, number_goal_with_obstacles_info)
+            number_obstacles_info = len(self.config["obstacles_info_list"])
+            selected_index = np.random.randint(0, number_obstacles_info)
             obstacles_info = self.config["obstacles_info_list"][selected_index]
             ox, oy = self.generate_ox_oy_with_map_bound(obstacles_info)
-            
             while True:
                 # random sample a equilibrium goal from the goal region and check whether collision
                 x_coordinates, y_coordinates, yaw_state = self.random_generate_goal()
@@ -394,16 +473,6 @@ class TractorTrailerMetaReachingEnv(Env):
             self.goal = tuple(self.controlled_vehicle.observe())
         
         self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
-        
-        # currently under this env, we will not use the start_list for initialization
-        if self.config["start_list"] is not None:
-            # random choose between a given goal list
-            number_starts = len(self.config["start_list"])
-            selected_index = np.random.randint(0, number_starts)
-            self.start = tuple(self.config["start_list"][selected_index])
-            self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
-        
-        
         if (self.config["goal_with_obstacles_info_list"] is None) and (self.config["obstacles_info_list"] is None):
             # given the goal and start, randomly initialize obstacles that given a fixed number of obstacles and sizes
             obstacles_info = self.generate_fixed_size_random_rectangle_obstacles(number_obstacles=self.config["number_obstacles"], min_length=self.config["min_length"], max_length=self.config["max_length"])
@@ -442,13 +511,64 @@ class TractorTrailerMetaReachingEnv(Env):
             rgb_image = self.render()
         else:
             rgb_image = self.white_image
-        obs_dict = OrderedDict([
-            ('observation', self.controlled_vehicle.observe().astype(np.float32)),
-            ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
-            ("desired_goal", np.array(self.goal, dtype=np.float32)),
-            ("collision_metric", self.controlled_vehicle.collision_metric(self.ox, self.oy)),
-            ("achieved_rgb_image", rgb_image)
-        ])
+            
+        if self.config["use_gray"]:
+            self.gray_image = self.render_obstacles()
+        else:
+            self.gray_image = self.white_image
+            
+        if self.observation_type == "original" and (not self.config["use_gray"]):
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+            ])
+        elif self.observation_type == "original" and self.config["use_gray"]:
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "one_hot_representation" and (not self.config["use_gray"]):
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy))
+            ])
+        elif self.observation_type == "one_hot_representation" and self.config["use_gray"]:
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)),
+                ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "lidar_detection" and (not self.config["use_gray"]):
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection", self.controlled_vehicle.lidar_detection(self.ox, self.oy))
+            ])
+        elif self.observation_type == "lidar_detection" and self.config["use_gray"]:
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection", self.controlled_vehicle.lidar_detection(self.ox, self.oy)),
+                ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "obstacles_image":
+            gray_image = self.render_obstacles()
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("obstacles_image", gray_image)
+            ])
+        
         info_dict = {
             "crashed": False,
             "is_success": False,
@@ -514,6 +634,8 @@ class TractorTrailerMetaReachingEnv(Env):
     
     def step(self, action):
         old_state = self.controlled_vehicle.observe()
+        # self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)
+        # self.controlled_vehicle.lidar_detection(self.ox, self.oy)
         action_clipped = np.clip(action, -self.act_limit, self.act_limit)
         if self.config["use_rgb"]:
             old_rgb_image = self.render()
@@ -522,18 +644,19 @@ class TractorTrailerMetaReachingEnv(Env):
 
         crashed, jack_knife = False, False
         for _ in range(self.config["N_steps"]):
-            collision_metric = np.ones(4, dtype=np.float32)
             self.controlled_vehicle.step(action_clipped, self.dt, self.config["allow_backward"])
             # Fank: change every little step to check collision
             if self.controlled_vehicle.is_collision(self.ox, self.oy):
                 crashed = True
-            collision_metric = np.minimum(collision_metric, self.controlled_vehicle.collision_metric(self.ox, self.oy))
             
             if self.controlled_vehicle._is_jack_knife():
                 jack_knife = True
             if self.evaluate_mode:
                 self.state_list.append(self.controlled_vehicle.observe())
                 self.action_list.append(action_clipped)
+            # TODO: I change here     
+            if crashed or jack_knife:
+                break
         # dtype: float64 np_array
         state = self.controlled_vehicle.observe()
         reward = self.reward(old_state, state)
@@ -555,18 +678,68 @@ class TractorTrailerMetaReachingEnv(Env):
             is_success = True
         else:
             is_success = False
+        
+        # Fank: after check success  
+        if self.observation_type == "lidar_detection" and not crashed:
+            lidar_detection = self.controlled_vehicle.lidar_detection(self.ox, self.oy)
+            minLidar = np.min(lidar_detection)
+            if minLidar <= 5:
+                reward += self.config["collision_penalty"] * ( 1 - minLidar / 5)
+                
+        if self.observation_type == "one_hot_representation" and not crashed:
+            one_hot_representation = self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)
+            sumOneHot = np.sum(one_hot_representation)
+            if sumOneHot > 0:
+                reward += self.config["collision_penalty"] * (sumOneHot / 32)
+            
 
         self.current_step += 1
         if self.current_step >= self.config["max_episode_steps"]:
             self.truncated = True
-
-        obs_dict = OrderedDict([
-            ('observation', state.astype(np.float32)),
-            ("achieved_goal", state.astype(np.float32)),
-            ("desired_goal", np.array(self.goal, dtype=np.float32)),
-            ("collision_metric", collision_metric),
-            ("achieved_rgb_image", new_rgb_image),
-        ])
+        
+        if self.observation_type == "original" and (not self.config["use_gray"]):
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+            ])
+        elif self.observation_type == "original" and self.config["use_gray"]:
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "one_hot_representation" and (not self.config["use_gray"]):
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy))
+            ])
+        elif self.observation_type == "one_hot_representation" and self.config["use_gray"]:
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)),
+                ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "lidar_detection" and (not self.config["use_gray"]):
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection", self.controlled_vehicle.lidar_detection(self.ox, self.oy))
+            ])
+        elif self.observation_type == "lidar_detection" and self.config["use_gray"]:
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection", self.controlled_vehicle.lidar_detection(self.ox, self.oy)),
+                ("gray_image", self.gray_image)
+            ])
 
         info_dict = {
             "crashed": crashed,
@@ -579,7 +752,7 @@ class TractorTrailerMetaReachingEnv(Env):
         }
 
         return obs_dict, reward, self.terminated, self.truncated, info_dict
-
+    
     def real_render(self):
         assert self.evaluate_mode
         plt.cla()
@@ -636,7 +809,101 @@ class TractorTrailerMetaReachingEnv(Env):
         plt.close(fig) # close the current figure window
 
         return np.array(np.transpose(rgb_img, (2,0,1))).astype(np.uint8)  # Return the PIL Image object
+    
+    def render_obstacles(self):
+        """Render the obstacles as a single-channel image"""
+        fig, ax = plt.subplots()  # Set the size of the figure
+
+        map_vertices = self.map.vertices + [self.map.vertices[0]]
+        map_x, map_y = zip(*map_vertices)
+        margin = 0.1
+        min_x, max_x = min(map_x), max(map_x)
+        min_y, max_y = min(map_y), max(map_y)
+        plt.plot(map_x, map_y, 'r-')
+
+        # Set the limits of the plot to the boundaries of the map
+        plt.xlim(min_x - margin, max_x + margin)
+        plt.ylim(min_y - margin, max_y + margin)
         
+        # Set the aspect of the plot to be equal
+        ax.set_aspect('equal')
+
+        self.plot_obstacles(ax)
+
+        ax.axis('off')
+        # plt.savefig("runs_rl/meta_tractor_trailer_env_obstacles_1.png")
+
+        # Convert the figure to a PIL Image object
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+        buf.seek(0)
+        img = Image.open(buf)
+
+        # Resize the image and convert it to grayscale
+        # resized_img = img.resize((84, 84), Image.LANCZOS)
+        gray_img = img.convert('L')
+        
+        # Convert all non-255 values to 0
+        np_img = np.array(gray_img)
+        # don't know if this works
+        np_img = np.where(np_img != 255, 0, np_img)
+
+        # # Save the image
+        # Image.fromarray(np_img).save("runs_rl/meta_tractor_trailer_env_obstacles.png")
+
+        buf.close()
+        plt.close(fig)  # close the current figure window
+        
+        # We don't shift the size of the image now
+
+        return np_img.astype(np.uint8)  # Return the PIL Image object
+        
+    # def render_jingyu(self):
+    #     # JinYu's render function
+    #     """when rgb mode used, this is used for jinyu's render"""
+    #     fig, ax = plt.subplots()  # Set the size of the figure
+
+    #     map_vertices = self.map.vertices + [self.map.vertices[0]]
+    #     map_x, map_y = zip(*map_vertices)
+    #     margin = 0.1
+    #     min_x, max_x = min(map_x), max(map_x)
+    #     min_y, max_y = min(map_y), max(map_y)
+        
+    #     plt.plot(map_x, map_y, 'r-')
+        
+    #     # here we full the vehicle so we don't care the exact action
+    #     self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), 'blue', is_full=True)
+        
+    #     # Set the limits of the plot to the boundaries of the map
+    #     plt.xlim(min_x - margin, max_x + margin)
+    #     plt.ylim(min_y - margin, max_y + margin)
+
+        
+    #     # Set the aspect of the plot to be equal
+    #     ax.set_aspect('equal')
+    #     self.plot_obstacles(ax)
+
+    #     ax.axis('off')
+
+    #     # Convert the figure to a PIL Image object
+    #     buf = io.BytesIO()
+    #     plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    #     buf.seek(0)
+    #     img = Image.open(buf)
+
+    #     # Resize the image and convert it to RGB
+    #     rgb_img = img.convert('RGB')
+        
+    #     # Convert all non-white (not 255,255,255) values to 0
+    #     np_img = np.array(rgb_img)
+    #     # Save the image
+    #     Image.fromarray(np_img).save("runs_rl/meta_tractor_trailer_env_rgb.png")
+
+    #     buf.close()
+    #     plt.close(fig) # close the current figure window
+        
+    #     return np.transpose(np_img, (2, 0, 1))  # Return the PIL Image object
+    
     def render_jingyu(self):
         # JinYu's render function
         """when rgb mode used, this is used for jinyu's render"""
@@ -644,36 +911,46 @@ class TractorTrailerMetaReachingEnv(Env):
 
         map_vertices = self.map.vertices + [self.map.vertices[0]]
         map_x, map_y = zip(*map_vertices)
+        margin = 0.1
+        min_x, max_x = min(map_x), max(map_x)
+        min_y, max_y = min(map_y), max(map_y)
+        
         plt.plot(map_x, map_y, 'r-')
+        
         # here we full the vehicle so we don't care the exact action
         self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), 'blue', is_full=True)
+        
+        # Set the limits of the plot to the boundaries of the map
+        plt.xlim(min_x - margin, max_x + margin)
+        plt.ylim(min_y - margin, max_y + margin)
 
-        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
-        self.plot_vehicle = deepcopy(self.controlled_vehicle)
-        self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
-        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green', is_full=True)
-
+        
+        # Set the aspect of the plot to be equal
+        ax.set_aspect('equal')
         self.plot_obstacles(ax)
 
         ax.axis('off')
 
         # Convert the figure to a PIL Image object
         buf = io.BytesIO()
-        plt.savefig(buf, format='png')
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
         buf.seek(0)
         img = Image.open(buf)
 
-        # Resize the image and convert it to RGB
-        resized_img = img.resize((128, 128), Image.LANCZOS)
-        rgb_img = resized_img.convert('RGB')
-
-        # Save the image
-        # rgb_img.save("runs_rl/meta_tractor_trailer_env_rgb.png")
+        # Resize the image to 128x128 and convert it to RGB
+        img_resized = img.resize((128, 128)).convert('RGB')
+        
+        # Convert the resized image to a numpy array
+        np_img_resized = np.array(img_resized)
+        
+        # Save the resized image
+        # img_resized.save("runs_rl/meta_tractor_trailer_env_jingyu.png")
 
         buf.close()
         plt.close(fig) # close the current figure window
         
-        return np.array(rgb_img).astype(np.uint8)  # Return the PIL Image object
+        return np.transpose(np_img_resized, (2, 0, 1))  # Return the numpy array of the resized image
+
     
     def reconstruct_image_from_observation(self, observation):
         # TODO: here we need to change
@@ -803,13 +1080,13 @@ class TractorTrailerMetaReachingEnv(Env):
         # Save the animation
         writer = PillowWriter(fps=24)
         if not save_dir:
-            if not os.path.exists("./rl_training/gif/tt_cluttered_reaching"):
-                os.makedirs("./rl_training/gif/tt_cluttered_reaching")
+            if not os.path.exists("./rl_training/gif/tt_meta_reaching"):
+                os.makedirs("./rl_training/gif/tt_meta_reaching")
                 
-            base_path = "./rl_training/gif/tt_cluttered_reaching/path_simulation"
+            base_path = "./rl_training/gif/tt_meta_reaching/path_simulation"
             extension = ".gif"
             
-            all_files = os.listdir("./rl_training/gif/tt_cluttered_reaching")
+            all_files = os.listdir("./rl_training/gif/tt_meta_reaching")
             matched_files = [re.match(r'path_simulation(\d+)\.gif', f) for f in all_files]
             numbers = [int(match.group(1)) for match in matched_files if match]
             
@@ -822,3 +1099,88 @@ class TractorTrailerMetaReachingEnv(Env):
             ani.save(save_dir, writer=writer)
             
         plt.close(fig)
+        
+    def save_result(self, save_dir=None, obstacles_info=None):
+        """notice here we need to give obstacles info"""
+        assert self.evaluate_mode # in case that you use the function not correctly
+
+        # ox, oy = self.map.sample_surface(0.1)
+        # if obstacles_info is not None:
+        #     for rectangle in obstacles_info:
+        #         obstacle = QuadrilateralObstacle(rectangle)
+        #         ox_obs, oy_obs = obstacle.sample_surface(0.1)
+        #         ox += ox_obs
+        #         oy += oy_obs
+        # ox, oy = map_and_obs.remove_duplicates(ox, oy)
+        # ox_, oy_ = self.goal_region.sample_surface(1)
+        # ox_, oy_ = map_and_obs.remove_duplicates(ox_, oy_)
+        start_state = self.state_list[0]
+        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
+        if self.vehicle_type == "single_tractor":
+            real_dim = 3
+            gyawt1, gyawt2, gyawt3 = None, None, None
+        elif self.vehicle_type == "one_trailer":
+            real_dim = 4
+            gyawt2, gyawt3 = None, None
+        elif self.vehicle_type == "two_trailer":
+            real_dim = 5
+            gyawt3 = None
+        else:
+            real_dim = 6
+
+        start_state_to_list = list(start_state)
+        start_state_to_list[real_dim:] = [None] * (6 - real_dim)
+        sx, sy, syaw0, syawt1, syawt2, syawt3 = start_state_to_list
+
+        pathx, pathy, pathyaw0 = [], [], []
+        pathyawt1, pathyawt2, pathyawt3 = [], [], []
+        for state in self.state_list:
+            state_to_list = list(state)
+            state_to_list[real_dim:] = [None] * (6 - real_dim)
+            x, y, yaw0, yawt1, yawt2, yawt3 = state_to_list
+            pathx.append(x)
+            pathy.append(y)
+            pathyaw0.append(yaw0)
+            pathyawt1.append(yawt1)
+            pathyawt2.append(yawt2)
+            pathyawt3.append(yawt3)
+
+        fig, ax = plt.subplots()
+        ax.clear()
+        plt.axis("equal")
+        k = len(pathx) - 1  # Use the last frame
+        plt.plot(self.ox, self.oy, "sk", markersize=1)
+        # plt.plot(ox_, oy_, "sk", markersize=0.5)
+        self.plot_vehicle = deepcopy(self.controlled_vehicle)
+        self.plot_vehicle.reset(sx, sy, syaw0, syawt1, syawt2, syawt3)
+
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
+        self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        plt.plot(pathx[:k], pathy[:k], linewidth=1.5, color='r')
+        self.plot_vehicle.reset(pathx[k], pathy[k], pathyaw0[k],pathyawt1[k], pathyawt2[k], pathyawt3[k])
+        try:
+            self.plot_vehicle.plot(ax, self.action_list[k], 'black')
+        except:
+            self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
+
+        # Save the final frame as a PNG image
+        if not save_dir:
+            if not os.path.exists("./rl_training/png/tt_meta_reaching"):
+                os.makedirs("./rl_training/png/tt_meta_reaching")
+
+            base_path = "./rl_training/png/tt_meta_reaching/path_simulation"
+            extension = ".png"
+
+            all_files = os.listdir("./rl_training/png/tt_meta_reaching")
+            matched_files = [re.match(r'path_simulation(\d+)\.png', f) for f in all_files]
+            numbers = [int(match.group(1)) for match in matched_files if match]
+
+            if numbers:
+                save_index = max(numbers) + 1
+            else:
+                save_index = 1
+            plt.savefig(base_path + str(save_index) + extension)
+        else:
+            plt.savefig(save_dir)
+        plt.close()

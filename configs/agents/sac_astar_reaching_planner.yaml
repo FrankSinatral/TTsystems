@@ -1,6 +1,6 @@
-algo_name: 'sac_astar_meta'
+algo_name: 'sac_astar'
 seed: 10
-env_name: 'meta-reaching-v0' # remember to switch script
+env_name: 'reaching-v0' # remember to switch script
 sac_steps_per_epoch: 50000
 sac_epochs: 100
 replay_size: 1000000 # for cluttered, set to 500000
@@ -20,15 +20,14 @@ output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: false
-use_auto: True
-whether_astar: true
+use_auto: true
+whether_astar: false
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
 astar_max_iter: 50
 astar_heuristic_type: 'traditional'
-whether_dataset: false
-dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
+use_logger: false
 
 
 pretrained: False
@@ -64,7 +63,7 @@ env_config:
     xi_max: 0.7853981633974483
     safe_d: 0.0
     safe_metric: 3.0
-  evaluate_mode: false
+  evaluate_mode: true
   goal_region_bound:
     x_min: -30
     x_max: 30
@@ -88,8 +87,7 @@ env_config:
   jack_knife_penalty: -20
   collision_penalty: -20
   use_rgb: false
-  observation: one_hot_representation
-  use_gray: false
   number_obstacles: 0
   max_length: 20
   min_length: 1
+  observation: original

@@ -115,7 +115,7 @@ class SquashedGaussianCNNActor(nn.Module):
 
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
         super().__init__()
-        self.cnn_net = cnn([(3, 32, 8, 4), (32, 64, 4, 2), (64, 64, 3, 1), 3136, 512], activation, activation)
+        self.cnn_net = cnn([(1, 32, 8, 4), (32, 64, 4, 2), (64, 128, 4, 2), (128, 256, 4, 2), 256*23*23, 512], activation, activation)
         self.net = mlp([obs_dim + 512] + list(hidden_sizes), activation, activation)
         self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
@@ -171,7 +171,8 @@ class CNNQFunction(nn.Module):
     
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         super().__init__()
-        self.cnn_net = cnn([(3, 32, 8, 4), (32, 64, 4, 2), (64, 64, 3, 1), 3136, 512], activation, activation)
+        # gray image as input: the calculation might not be correct
+        self.cnn_net = cnn([(1, 32, 8, 4), (32, 64, 4, 2), (64, 128, 4, 2), (128, 256, 4, 2), 256*23*23, 512], activation, activation)
         self.q = mlp([obs_dim + act_dim + 512] + list(hidden_sizes) + [1], activation)
 
     def forward(self, obs, image_obs, act):

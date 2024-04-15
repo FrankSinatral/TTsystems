@@ -19,7 +19,7 @@ logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
-whether_her: false
+whether_her: False
 use_auto: True
 whether_astar: true
 astar_ablation: false # true stands for ablation study
@@ -27,8 +27,6 @@ astar_mp_steps: 10
 astar_N_steps: 10
 astar_max_iter: 50
 astar_heuristic_type: 'traditional'
-whether_dataset: false
-dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
 
 
 pretrained: False
@@ -88,8 +86,6 @@ env_config:
   jack_knife_penalty: -20
   collision_penalty: -20
   use_rgb: false
-  observation: one_hot_representation
-  use_gray: false
-  number_obstacles: 0
+  number_obstacles: 1
   max_length: 20
   min_length: 1

@@ -15,7 +15,7 @@ from multiprocessing import Pool
 import logging
 import random
 
-def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heuristic_type="traditional"):
+def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heuristic_type="traditional", observation_type="original"):
     """only for 3-tt"""
     goal = o[0]["desired_goal"]
     input = o[0]["observation"]
@@ -56,16 +56,64 @@ def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heu
             "xi_max": (np.pi) / 4, # jack-knife constraint  
         },
         "acceptance_error": 0.5,
+        "observation": "original",
     }
     
-    pack_transition_list = query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config)
+    pack_transition_list = query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config, observation_type)
     return pack_transition_list
 
-def query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None):
+def find_expert_trajectory(o, vehicle_type):
+    goal = o["desired_goal"]
+    input = o["observation"]
+    try:
+        obstacles_info = o["obstacles_info"]
+    except:
+        obstacles_info = None
+        
+    config = {
+        "plot_final_path": False,
+        "plot_rs_path": False,
+        "plot_expand_tree": False,
+        "mp_step": 12, # Important
+        "N_steps": 30, # Important
+        "range_steer_set": 20,
+        "max_iter": 50,
+        "controlled_vehicle_config": {
+                    "w": 2.0, #[m] width of vehicle
+                    "wb": 3.5, #[m] wheel base: rear to front steer
+                    "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                    "rf": 4.5, #[m] distance from rear to vehicle front end
+                    "rb": 1.0, #[m] distance from rear to vehicle back end
+                    "tr": 0.5, #[m] tyre radius
+                    "tw": 1.0, #[m] tyre width
+                    "rtr": 2.0, #[m] rear to trailer wheel
+                    "rtf": 1.0, #[m] distance from rear to trailer front end
+                    "rtb": 3.0, #[m] distance from rear to trailer back end
+                    "rtr2": 2.0, #[m] rear to second trailer wheel
+                    "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                    "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                    "rtr3": 2.0, #[m] rear to third trailer wheel
+                    "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                    "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                    "max_steer": 0.6, #[rad] maximum steering angle
+                    "v_max": 2.0, #[m/s] maximum velocity 
+                    "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                    "xi_max": (np.pi) / 4, # jack-knife constraint  
+                },
+        "acceptance_error": 0.5,
+        }
+    if vehicle_type == "one_trailer":
+        pack_transition_list = query_hybrid_astar_one_trailer(input, goal)
+    elif vehicle_type == "three_trailer":
+        pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info, config)
+    return pack_transition_list
+
+def query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None, observation_type="original"):
+    """this function first generate the transition list using hybrid astar, then pack the transition list with reward"""
     # fixed to 6-dim
-    transition_list = generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config)
+    transition_list = generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config, observation_type)
     if transition_list is not None:
-        pack_transition_list = pack_transition_with_reward_meta(goal, transition_list, N_steps=config["N_steps"])
+        pack_transition_list = pack_transition_with_reward_meta(goal, transition_list, N_steps=config["N_steps"], observation_type=observation_type)
     else:
         return None
     return pack_transition_list
@@ -187,7 +235,7 @@ def forward_simulation_three_trailer(input, goal, control_list, simulation_freq)
         print("Reject")
         return None
   
-def forward_simulation_three_trailer_meta(input, goal, ox, oy, control_list, simulation_freq):
+def forward_simulation_three_trailer_meta(input, goal, ox, oy, control_list, simulation_freq, observation_type="original"):
     # Pack every 10 steps to add to buffer
     config_dict = {
         "w": 2.0, #[m] width of vehicle
@@ -213,20 +261,34 @@ def forward_simulation_three_trailer_meta(input, goal, ox, oy, control_list, sim
         "xi_max": (np.pi) / 4, # jack-knife constraint  
     }
     transition_list = []
-    
-    
     controlled_vehicle = tt_envs.ThreeTrailer(config_dict)
     controlled_vehicle.reset(*input)
     state = controlled_vehicle.observe()
-    state_collision_metric = controlled_vehicle.collision_metric(ox, oy)
+    if observation_type == "lidar_detection":
+        state_lidar_detection = controlled_vehicle.lidar_detection(ox, oy)
+    elif observation_type == "one_hot_representation":
+        state_one_hot_representation = controlled_vehicle.one_hot_representation(d=3, number=8, ox=ox, oy=oy)
+    
     for action_clipped in control_list:
         controlled_vehicle.step(action_clipped, 1 / simulation_freq)
+        # Fank: add collision detection
+        if controlled_vehicle.is_collision(ox, oy):
+            return None
         next_state = controlled_vehicle.observe()
-        next_state_collision_metric = controlled_vehicle.collision_metric(ox, oy)
-        transition = [state, state_collision_metric, action_clipped, next_state, next_state_collision_metric]
+        if observation_type == "original":
+            transition = [state, action_clipped, next_state]
+        elif observation_type == "lidar_detection":
+            next_state_lidar_detection = controlled_vehicle.lidar_detection(ox, oy)
+            transition = [state, state_lidar_detection, action_clipped, next_state, next_state_lidar_detection]
+            state_lidar_detection = next_state_lidar_detection
+        elif observation_type == "one_hot_representation":
+            next_state_one_hot_representation = controlled_vehicle.one_hot_representation(d=3, number=8, ox=ox, oy=oy)
+            transition = [state, state_one_hot_representation, action_clipped, next_state, next_state_one_hot_representation]
+            state_one_hot_representation = next_state_one_hot_representation
+        
         transition_list.append(transition)
         state = next_state
-        state_collision_metric = next_state_collision_metric
+        
     final_state = np.array(controlled_vehicle.state)
     distance_error = mixed_norm(goal, final_state)
     # distance_error = np.linalg.norm(goal - final_state)
@@ -275,21 +337,64 @@ def pack_transition_with_reward(goal, transition_list, obstacles_info=None, N_st
         i += N_steps
     return pack_transition_list
 
-def pack_transition_with_reward_meta(goal, transition_list, N_steps=10):
+def pack_transition_with_reward_meta(goal, transition_list, N_steps=10, observation_type="original"):
     # for rl training
     # add reward every 10 steps
+    # here I have change the api for more diverse observation type
+    # different observation type relabel the reward differently
     assert len(transition_list) % N_steps == 0, "The length of transition list should be a multiple of N_steps"
     pack_transition_list = []
     i = 0
     while i < len(transition_list):
-        state, state_collision_metric, action, _, _ = transition_list[i]
-        next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
-        _, _, _, next_state, next_state_collsion_metric = transition_list[next_state_index]
-        if i == len(transition_list) - N_steps:
-            #pack mamually with reward
-            pack_transition_list.append([np.concatenate([state, state, goal, state_collision_metric]), action, np.concatenate([next_state, next_state, goal, next_state_collsion_metric]), 15, True])
-        else:
-            pack_transition_list.append([np.concatenate([state, state, goal, state_collision_metric]), action, np.concatenate([next_state, next_state, goal, next_state_collsion_metric]), -1, False]) # fix a bug
+        if observation_type == "original":
+            """only (s, a, s')"""
+            state, action, _ = transition_list[i]
+            next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+            _, _, next_state = transition_list[next_state_index]
+            if i == len(transition_list) - N_steps:
+                #pack mamually with reward
+                pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), 15, True])
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal]), action, np.concatenate([next_state, next_state, goal]), -1, False])
+                
+        elif observation_type == "lidar_detection":
+            """(s, s_lidar, a, s', s'_lidar)
+            s_lidar is a 32-dim vector
+            """
+            state, state_lidar_detection, action, _, _ = transition_list[i]
+            next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+            _, _, _, next_state, next_state_lidar_detection = transition_list[next_state_index]
+            next_state_minLidar = np.min(next_state_lidar_detection)
+            if i == len(transition_list) - N_steps:
+                #pack mamually with reward
+                # TODO: to align with the env
+                if next_state_minLidar <= 5:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection]), 15 + (-20) * (1 - next_state_minLidar / 5), True])
+                else:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection]), 15, True])
+            else:
+                next_state_minLidar = np.min(next_state_lidar_detection)
+                if next_state_minLidar <= 5:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection]), -1 + (-20) * (1 - next_state_minLidar / 5), False])
+                else:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection]), -1, False])
+        elif observation_type == "one_hot_representation":
+            state, state_one_hot_representation, action, _, _ = transition_list[i]
+            next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+            _, _, _, next_state, next_state_one_hot_representation = transition_list[next_state_index]
+            next_state_sumOneHot = np.sum(next_state_one_hot_representation)
+            if i == len(transition_list) - N_steps:
+                #pack mamually with reward
+                # TODO: to align with the env
+                if next_state_sumOneHot >= 1:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15 + (-20) * (next_state_sumOneHot/20), True])
+                else:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15, True])
+            else:
+                if next_state_sumOneHot >= 1:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1 + (-20) * (next_state_sumOneHot/20), False])
+                else:
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1, False])
         i += N_steps
     return pack_transition_list
 
@@ -443,7 +548,7 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, 
         return None
     return transition_list 
 
-def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None):
+def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None, observation_type="original"):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     
@@ -463,14 +568,14 @@ def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_i
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
     try:
         t1 = time.time()
-        path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True)
+        path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True, obstacles_info=obstacles_info)
         t2 = time.time()
         print("planning time:", t2 - t1)
     except: 
         return None
     if control_list is not None:
         control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
-        transition_list = forward_simulation_three_trailer_meta(input, goal, ox, oy, control_recover_list, simulation_freq=10)
+        transition_list = forward_simulation_three_trailer_meta(input, goal, ox, oy, control_recover_list, simulation_freq=10, observation_type=observation_type)
     else:
         return None
     return transition_list

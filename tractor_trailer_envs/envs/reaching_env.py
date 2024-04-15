@@ -250,7 +250,10 @@ class TractorTrailerReachingEnv(Env):
     
     
     def reset(self, **kwargs):
-        # 6-dim
+        """reset function
+        obstacles_info: [[(x1, y1), (x1, y2), (x2, y2), (x2, y1)], [...]]
+        goal: (x, y, yaw0, yawt1, yawt2, yawt3)
+        """
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
             np.random.seed(kwargs['seed'])
@@ -668,12 +671,19 @@ class TractorTrailerReachingEnv(Env):
         if not os.path.exists('curriculum_vis/goals/'):
             os.makedirs('curriculum_vis/goals/')
         plt.savefig('curriculum_vis/goals/training_goals_{}.png'.format(i))        
-        
-    def run_simulation(self, save_dir=None):
+    
+    def run_simulation(self, save_dir=None, obstacles_info=None):
         assert self.evaluate_mode # in case that you use the function not correctly
         
         from matplotlib.animation import FuncAnimation, PillowWriter
+        
         ox, oy = self.map.sample_surface(0.1)
+        if obstacles_info is not None:
+            for rectangle in obstacles_info:
+                obstacle = QuadrilateralObstacle(rectangle)
+                ox_obs, oy_obs = obstacle.sample_surface(0.1)
+                ox += ox_obs
+                oy += oy_obs
         ox, oy = map_and_obs.remove_duplicates(ox, oy)
         ox_, oy_ = self.goal_region.sample_surface(1)
         ox_, oy_ = map_and_obs.remove_duplicates(ox_, oy_)
@@ -762,6 +772,92 @@ class TractorTrailerReachingEnv(Env):
             ani.save(base_path + str(save_index) + extension, writer=writer) 
         else:
             ani.save(save_dir, writer=writer)
+    
+    def save_result(self, save_dir=None, obstacles_info=None):
+        assert self.evaluate_mode # in case that you use the function not correctly
+
+        from matplotlib.animation import FuncAnimation, PillowWriter
+
+        ox, oy = self.map.sample_surface(0.1)
+        if obstacles_info is not None:
+            for rectangle in obstacles_info:
+                obstacle = QuadrilateralObstacle(rectangle)
+                ox_obs, oy_obs = obstacle.sample_surface(0.1)
+                ox += ox_obs
+                oy += oy_obs
+        ox, oy = map_and_obs.remove_duplicates(ox, oy)
+        # ox_, oy_ = self.goal_region.sample_surface(1)
+        # ox_, oy_ = map_and_obs.remove_duplicates(ox_, oy_)
+        start_state = self.state_list[0]
+        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
+        if self.vehicle_type == "single_tractor":
+            real_dim = 3
+            gyawt1, gyawt2, gyawt3 = None, None, None
+        elif self.vehicle_type == "one_trailer":
+            real_dim = 4
+            gyawt2, gyawt3 = None, None
+        elif self.vehicle_type == "two_trailer":
+            real_dim = 5
+            gyawt3 = None
+        else:
+            real_dim = 6
+
+        start_state_to_list = list(start_state)
+        start_state_to_list[real_dim:] = [None] * (6 - real_dim)
+        sx, sy, syaw0, syawt1, syawt2, syawt3 = start_state_to_list
+
+        pathx, pathy, pathyaw0 = [], [], []
+        pathyawt1, pathyawt2, pathyawt3 = [], [], []
+        for state in self.state_list:
+            state_to_list = list(state)
+            state_to_list[real_dim:] = [None] * (6 - real_dim)
+            x, y, yaw0, yawt1, yawt2, yawt3 = state_to_list
+            pathx.append(x)
+            pathy.append(y)
+            pathyaw0.append(yaw0)
+            pathyawt1.append(yawt1)
+            pathyawt2.append(yawt2)
+            pathyawt3.append(yawt3)
+
+        fig, ax = plt.subplots()
+        ax.clear()
+        plt.axis("equal")
+        k = len(pathx) - 1  # Use the last frame
+        plt.plot(ox, oy, "sk", markersize=1)
+        # plt.plot(ox_, oy_, "sk", markersize=0.5)
+        self.plot_vehicle = deepcopy(self.controlled_vehicle)
+        self.plot_vehicle.reset(sx, sy, syaw0, syawt1, syawt2, syawt3)
+
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
+        self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        plt.plot(pathx[:k], pathy[:k], linewidth=1.5, color='r')
+        self.plot_vehicle.reset(pathx[k], pathy[k], pathyaw0[k],pathyawt1[k], pathyawt2[k], pathyawt3[k])
+        try:
+            self.plot_vehicle.plot(ax, self.action_list[k], 'black')
+        except:
+            self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
+
+        # Save the final frame as a PNG image
+        if not save_dir:
+            if not os.path.exists("./rl_training/png/tt_reaching"):
+                os.makedirs("./rl_training/png/tt_reaching")
+
+            base_path = "./rl_training/png/tt_reaching/path_simulation"
+            extension = ".png"
+
+            all_files = os.listdir("./rl_training/png/tt_reaching")
+            matched_files = [re.match(r'path_simulation(\d+)\.png', f) for f in all_files]
+            numbers = [int(match.group(1)) for match in matched_files if match]
+
+            if numbers:
+                save_index = max(numbers) + 1
+            else:
+                save_index = 1
+            plt.savefig(base_path + str(save_index) + extension)
+        else:
+            plt.savefig(save_dir)
+        plt.close()
             
 
 # class TractorTrailerReachingEnvVersion1(Env):
