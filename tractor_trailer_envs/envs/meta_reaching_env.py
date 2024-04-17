@@ -685,12 +685,13 @@ class TractorTrailerMetaReachingEnv(Env):
             minLidar = np.min(lidar_detection)
             if minLidar <= 5:
                 reward += self.config["collision_penalty"] * ( 1 - minLidar / 5)
-                
-        if self.observation_type == "one_hot_representation" and not crashed:
-            one_hot_representation = self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)
-            sumOneHot = np.sum(one_hot_representation)
-            if sumOneHot > 0:
-                reward += self.config["collision_penalty"] * (sumOneHot / 32)
+        
+        # Take this form out       
+        # if self.observation_type == "one_hot_representation" and not crashed:
+        #     one_hot_representation = self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)
+        #     sumOneHot = np.sum(one_hot_representation)
+        #     if sumOneHot > 0:
+        #         reward += self.config["collision_penalty"] * (sumOneHot / 32)
             
 
         self.current_step += 1
@@ -951,6 +952,61 @@ class TractorTrailerMetaReachingEnv(Env):
         
         return np.transpose(np_img_resized, (2, 0, 1))  # Return the numpy array of the resized image
 
+    
+    def render_jingyu_test(self):
+        # JinYu's render function
+        """when rgb mode used, this is used for jinyu's render"""
+        vehicle_colors = ["red", "blue", "green", "purple"]
+        fig, ax = plt.subplots()  # Set the size of the figure
+
+        map_vertices = self.map.vertices + [self.map.vertices[0]]
+        map_x, map_y = zip(*map_vertices)
+        margin = 0.1
+        min_x, max_x = min(map_x), max(map_x)
+        min_y, max_y = min(map_y), max(map_y)
+        
+        plt.plot(map_x, map_y, 'w-')
+        
+        # here we full the vehicle so we don't care the exact action
+        vehicle_plot = self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), vehicle_colors, is_full=True)
+        
+        
+        # Set the limits of the plot to the boundaries of the map
+        plt.xlim(min_x - margin, max_x + margin)
+        plt.ylim(min_y - margin, max_y + margin)
+
+        # Set the aspect of the plot to be equal
+        ax.set_aspect('equal')
+
+        ax.axis('off')
+
+        # Convert the figure to a PIL Image object
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+        buf.seek(0)
+        img = Image.open(buf)
+
+        # Convert the image to RGB
+        img_rgb = img.convert('RGB')
+        
+        # Crop the center 128x128 pixels of the image
+        width, height = img_rgb.size
+        left = (width - 128)/2
+        top = (height - 128)/2
+        right = (width + 128)/2
+        bottom = (height + 128)/2
+        img_cropped = img_rgb.crop((left, top, right, bottom))
+        
+        # Convert the cropped image to a numpy array
+        np_img = np.array(img_cropped)
+        
+        # Save the cropped image
+        img_cropped.save("runs_rl/meta_tractor_trailer_env_jingyu_test.png")
+
+        buf.close()
+        plt.close(fig) # close the current figure window
+        
+        return np.transpose(np_img, (2, 0, 1))  # Return the numpy array of the cropped image
     
     def reconstruct_image_from_observation(self, observation):
         # TODO: here we need to change

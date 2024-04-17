@@ -46,7 +46,7 @@ def find_astar_trajectory(input, goal, obstacles_info):
         "range_steer_set": 20,
         "max_iter": 50,
         "heuristic_type": "mix", # use mix here to test planner1
-        "save_final_plot": False,
+        "save_final_plot": True,
         "controlled_vehicle_config": {
             "w": 2.0, #[m] width of vehicle
             "wb": 3.5, #[m] wheel base: rear to front steer
@@ -157,8 +157,12 @@ def main():
     use_datasets = True
     # with open("datasets/reaching_results_with_obstacles.pickle", "rb") as f:
     #     datasets = pickle.load(f)  
-    with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
-        datasets = pickle.load(f)
+    # with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
+    #     datasets = pickle.load(f)
+   
+    with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
+        datasets = pickle.load(f)   
+    
     with open("configs/agents/eval/planner1_env.yaml", "r") as f:
         config = yaml.safe_load(f)
     env = gym.make("tt-meta-reaching-v0", config=config)
@@ -166,7 +170,7 @@ def main():
     failed_number = 0
     if use_datasets:
         goal_with_obstacles_info_list = []
-        for data in datasets[:100]:
+        for data in datasets:
             goal = data["goal"]
             obstacles_info = data["obstacles_info"]
             task_dict = {
@@ -175,7 +179,8 @@ def main():
             }
             goal_with_obstacles_info_list.append(task_dict) 
     task_list = []
-    for i in range(100):
+    for i in range(len(datasets)):
+        i = 11
         if use_datasets:
             now_goal_with_obstacles_info_list = [goal_with_obstacles_info_list[i]]
             env.unwrapped.update_goal_with_obstacles_info_list(now_goal_with_obstacles_info_list)
@@ -184,16 +189,16 @@ def main():
         input = o["achieved_goal"]
         goal = o["desired_goal"]
         obstacles_info = info["obstacles_info"]
-        task_list.append((input, goal, obstacles_info))
-    astar_results = Parallel(n_jobs=-1)(delayed(find_astar_trajectory)(input, goal, obstacles_info) for input, goal, obstacles_info in task_list)
-        # is_success = find_astar_trajectory(input, goal, obstacles_info)
-        # print(f"Episode {i}: Success - {is_success}")
-        # if not is_success:
-        #     failed_cases.append((o, info))
-        #     failed_number += 1
+    #     task_list.append((input, goal, obstacles_info))
+    # astar_results = Parallel(n_jobs=-1)(delayed(find_astar_trajectory)(input, goal, obstacles_info) for input, goal, obstacles_info in task_list)
+        is_success = find_astar_trajectory(input, goal, obstacles_info)
+        print(f"Episode {i}: Success - {is_success}")
+        if not is_success:
+            failed_cases.append((o, info))
+            failed_number += 1
         
-    print("failed number: ", astar_results.count(False))
-    # print("failed number: ", failed_number)
+    # print("failed number: ", astar_results.count(False))
+    print("failed number: ", failed_number)
     # # Save all failed cases to a single file
     # with open('datasets/all_failed_cases_planner1.pkl', 'wb') as f:
     #     pickle.dump(failed_cases, f)

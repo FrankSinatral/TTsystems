@@ -31,8 +31,12 @@ def main():
     # the script is for evaluating rl1's result
     # you can choose to evaluate the first 100's data on the dataset
     # or choose randomly from the env
-    with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
+    # with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
+    #     datasets = pickle.load(f)
+    with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
         datasets = pickle.load(f)
+    # with open("datasets/all_failed_cases_rl1_obs2_linear.pickle", "rb") as f:
+    #     datasets = pickle.load(f)
     with open("configs/agents/eval/rl1_env.yaml", "r") as f:
         # remember here you have to set the same as the training
         config = yaml.safe_load(f)
@@ -93,23 +97,36 @@ def main():
                 whether_astar=config_algo['whether_astar'],
                 astar_ablation=config_algo['astar_ablation'],
                 config=config_algo['env_config'])
-    filename = 'runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240401_223636/model_2499999.pth'
+    # filename = 'runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240401_223636/model_2499999.pth'
+    
+    # dataset training
+    filename = 'runs_rl/meta-reaching-v0_rl1_one_hot_three_trailer_10_20240410_004916/model_final.pth'
+    
+    
+    # # number_obstacles=1 + linear penalty
+    # filename = "runs_rl/meta-reaching-v0_rl1_one_hot_three_trailer_10_20240410_004846/model_1999999.pth"
+    
+    # # number_obstacles=2 + linear penalty
+    # filename = "runs_rl/meta-reaching-v0_rl1_one_hot_three_trailer_10_20240409_190631/model_4499999.pth"
+    
+    
+    
     agent.load(filename, whether_load_buffer=False)
     
     if use_datasets:
         goal_with_obstacles_info_list = []
-        for data in datasets[:100]:
+        for data in datasets:
             goal = data["goal"]
             obstacles_info = data["obstacles_info"]
             task_dict = {
                 "goal": goal,
-                "obstacles_info": obstacles_info
+                "obstacles_info": None, # obstacles_info
             }
             goal_with_obstacles_info_list.append(task_dict) 
     
     failed_cases = []
     failed_number = 0
-    for i in range(100):
+    for i in range(len(datasets)):
         # goal_list = [goal_with_obstacles_info_list[i]["goal"]]
         # obstacles_info = goal_with_obstacles_info_list[i]["obstacles_info"]
         if use_datasets:
@@ -123,16 +140,20 @@ def main():
             o, r, terminated, truncated, info = env.step(agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o["one_hot_representation"]]), True))
             ep_ret += r
             ep_len += 1
-        # env.unwrapped.run_simulation()
+        env.unwrapped.run_simulation()
         # env.unwrapped.save_result()
         print(f"Episode {i}: Success - {info['is_success']}")
         if not info['is_success']:
-            failed_cases.append((o, info))
+            failed_dict = {
+                "goal": o["desired_goal"],
+                "obstacles_info": info["obstacles_info"],
+            }
+            failed_cases.append(failed_dict)
             failed_number += 1
     print("failed number: ", failed_number)
     #     env.unwrapped.save_result()
     # # Save all failed cases to a single file
-    # with open('datasets/all_failed_cases.pkl', 'wb') as f:
+    # with open('datasets/all_failed_cases_rl1_obs2_linear.pickle', 'wb') as f:
     #     pickle.dump(failed_cases, f)
     
     

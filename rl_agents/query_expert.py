@@ -378,6 +378,23 @@ def pack_transition_with_reward_meta(goal, transition_list, N_steps=10, observat
                     pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection]), -1 + (-20) * (1 - next_state_minLidar / 5), False])
                 else:
                     pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection]), -1, False])
+        # elif observation_type == "one_hot_representation":
+        #     state, state_one_hot_representation, action, _, _ = transition_list[i]
+        #     next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+        #     _, _, _, next_state, next_state_one_hot_representation = transition_list[next_state_index]
+        #     next_state_sumOneHot = np.sum(next_state_one_hot_representation)
+        #     if i == len(transition_list) - N_steps:
+        #         #pack mamually with reward
+        #         # TODO: to align with the env
+        #         if next_state_sumOneHot >= 1:
+        #             pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15 + (-20) * (next_state_sumOneHot/20), True])
+        #         else:
+        #             pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15, True])
+        #     else:
+        #         if next_state_sumOneHot >= 1:
+        #             pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1 + (-20) * (next_state_sumOneHot/20), False])
+        #         else:
+        #             pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1, False])
         elif observation_type == "one_hot_representation":
             state, state_one_hot_representation, action, _, _ = transition_list[i]
             next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
@@ -387,12 +404,12 @@ def pack_transition_with_reward_meta(goal, transition_list, N_steps=10, observat
                 #pack mamually with reward
                 # TODO: to align with the env
                 if next_state_sumOneHot >= 1:
-                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15 + (-20) * (next_state_sumOneHot/20), True])
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15, True])
                 else:
                     pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), 15, True])
             else:
                 if next_state_sumOneHot >= 1:
-                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1 + (-20) * (next_state_sumOneHot/20), False])
+                    pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1, False])
                 else:
                     pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1, False])
         i += N_steps

@@ -7,7 +7,7 @@ from tractor_trailer_envs.vehicles.config import get_config
 from scipy.spatial import cKDTree
 import tractor_trailer_envs.map_and_obstacles.settings as settings
 from matplotlib.axes import Axes
-from typing import Tuple, List
+from typing import Tuple, List, Union
 
 def point_to_rectangle_distance(cx, cy, l, d, yaw, ox, oy):
     # Transform the points to the rectangle's local coordinate system
@@ -1210,7 +1210,7 @@ class ThreeTrailer(Vehicle):
         
     #     self.plot_arrow(ax, l=self.WB * 0.8, color=color)
     
-    def plot(self, ax: Axes, action: np.ndarray, color: str = 'black', is_full: bool = False) -> None:
+    def plot(self, ax: Axes, action: np.ndarray, color: Union[str, List[str]] = 'black', is_full: bool = False) -> None:
         '''
         Car: three_trailer model class
         x: center of rear wheel
@@ -1221,16 +1221,20 @@ class ThreeTrailer(Vehicle):
         yawt3: yaw of trailer3
         steer: steer of front wheel
         '''
+        # Fank: change the color to list
         _, steer = action
         steer = self.steer_scale(steer)
         
-        self.plot_tractor_and_four_wheels(ax, steer, color=color, is_full=is_full)
-        for i in range(1, 4):
-            self.plot_trailer_and_two_wheels(ax, number=i, color=color, is_full=is_full)
-        for i in range(1, 4):
-            self.plot_link(ax, number=i, color=color)
+        if isinstance(color, str):
+            color = [color] * 4
         
-        self.plot_arrow(ax, l=self.WB * 0.8, color=color)
+        self.plot_tractor_and_four_wheels(ax, steer, color=color[0], is_full=is_full)
+        for i in range(1, 4):
+            self.plot_trailer_and_two_wheels(ax, number=i, color=color[i], is_full=is_full)
+        # for i in range(1, 4):
+        #     self.plot_link(ax, number=i, color=color[i])
+        
+        self.plot_arrow(ax, l=self.WB * 0.8, color=color[0])
     
     
     def plot_link(self, ax: Axes, number: int, color: str = 'black') -> None:

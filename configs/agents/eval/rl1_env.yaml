@@ -52,6 +52,6 @@ collision_penalty: -20
 use_rgb: false
 use_gray: false
 observation: one_hot_representation
-number_obstacles: 1
+number_obstacles: 2
 max_length: 20
 min_length: 1
