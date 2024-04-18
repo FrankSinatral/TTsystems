@@ -27,7 +27,7 @@ astar_mp_steps: 10
 astar_N_steps: 10
 astar_max_iter: 5
 astar_heuristic_type: 'mix'
-whether_dataset: true
+whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
 
 
@@ -90,6 +90,6 @@ env_config:
   use_rgb: false
   observation: one_hot_representation
   use_gray: false
-  number_obstacles: 1
+  number_obstacles: 0
   max_length: 20
   min_length: 1

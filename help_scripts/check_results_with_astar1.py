@@ -154,14 +154,14 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, 
 
 def main():
     # run astar1(reaching env as a rl path to guide) to see the final test results
-    use_datasets = True
+    use_datasets = False
     # with open("datasets/reaching_results_with_obstacles.pickle", "rb") as f:
     #     datasets = pickle.load(f)  
     # with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
     #     datasets = pickle.load(f)
-   
-    with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
-        datasets = pickle.load(f)   
+    if use_datasets:
+        with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
+            datasets = pickle.load(f)   
     
     with open("configs/agents/eval/planner1_env.yaml", "r") as f:
         config = yaml.safe_load(f)
@@ -179,7 +179,7 @@ def main():
             }
             goal_with_obstacles_info_list.append(task_dict) 
     task_list = []
-    for i in range(len(datasets)):
+    for i in range(10):
         i = 11
         if use_datasets:
             now_goal_with_obstacles_info_list = [goal_with_obstacles_info_list[i]]

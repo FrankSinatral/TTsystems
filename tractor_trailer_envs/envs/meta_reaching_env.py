@@ -368,6 +368,7 @@ class TractorTrailerMetaReachingEnv(Env):
         # Note that obstacels_info can be an empty list
         """
         obstacles_info: [[(x1, y1), (x1, y2), (x2, y2), (x2, y1)], [...]]
+        obstacles_info: [] also can be None?
         """
         ox, oy = self.map.sample_surface(0.1)
         try:
@@ -387,6 +388,8 @@ class TractorTrailerMetaReachingEnv(Env):
         - number_obstacles: represent the number of obstacles(0-5)
         - min_length: the minimum length of the obstacle(we fix the minmum length to 1.0)
         - max_length: the maximum length of the obstacle
+        
+        Note that if we have no obstacles, the obstacles info will be [] instead of None
         """
         obstacles_list = []
         obstacles_info = []
@@ -1156,7 +1159,7 @@ class TractorTrailerMetaReachingEnv(Env):
             
         plt.close(fig)
         
-    def save_result(self, save_dir=None, obstacles_info=None):
+    def save_result(self, save_dir=None):
         """notice here we need to give obstacles info"""
         assert self.evaluate_mode # in case that you use the function not correctly
 

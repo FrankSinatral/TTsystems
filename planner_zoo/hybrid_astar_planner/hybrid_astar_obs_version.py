@@ -4463,7 +4463,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             # filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_2849999.pth'
             if self.observation_type == "original":
                 # filename = "runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240407_215544/model_1499999.pth"
-                filename = "runs_rl/reaching-v0_sac_astar_three_trailer_10_20240322_002324/model_2999999.pth"
+                filename = "datasets/models/original_model.pth"
             elif self.observation_type == "one_hot_representation":
                 filename = "runs_rl/reaching-v0_sac_astar_three_trailer_10_20240322_002324/model_2999999.pth"
             self.agent.load(filename, whether_load_buffer=False)
@@ -5775,6 +5775,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         """
         # input the given information
         if 'obstacles_info' in kwargs:
+            # [] or [[(),(),(),()],...]
             obstacles_info = kwargs['obstacles_info']
         self.sx, self.sy, self.syaw, self.syawt1, self.syawt2, self.syawt3 = start
         self.gx, self.gy, self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = goal

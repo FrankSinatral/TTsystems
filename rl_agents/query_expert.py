@@ -20,9 +20,8 @@ def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heu
     goal = o[0]["desired_goal"]
     input = o[0]["observation"]
     obstacles_info = o[1]
-    if len(obstacles_info) == 0:
-        obstacles_info = None
-        
+    # if len(obstacles_info) == 0:
+    #     obstacles_info = None  
     config = {
         "plot_final_path": False,
         "plot_rs_path": False,
@@ -108,7 +107,7 @@ def find_expert_trajectory(o, vehicle_type):
         pack_transition_list = query_hybrid_astar_three_trailer(input, goal, obstacles_info, config)
     return pack_transition_list
 
-def query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None, observation_type="original"):
+def query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config=None, observation_type="original"):
     """this function first generate the transition list using hybrid astar, then pack the transition list with reward"""
     # fixed to 6-dim
     transition_list = generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config, observation_type)
@@ -565,7 +564,7 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, 
         return None
     return transition_list 
 
-def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info=None, config=None, observation_type="original"):
+def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config=None, observation_type="original"):
    
     # input = np.array([0, 0, np.deg2rad(0.0), np.deg2rad(0.0)])
     
@@ -573,12 +572,14 @@ def generate_using_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_i
     ox = ox_map
     oy = oy_map
     ox, oy = tt_envs.remove_duplicates(ox, oy)
-    if obstacles_info is not None:
+    try: # In case of []
         for rectangle in obstacles_info:
             obstacle = tt_envs.QuadrilateralObstacle(rectangle)
             ox_obs, oy_obs = obstacle.sample_surface(0.1)
             ox += ox_obs
-            oy += oy_obs
+            oy += oy_obs      
+    except:
+        pass
     
     assert config is not None, "config should not be None"
     
