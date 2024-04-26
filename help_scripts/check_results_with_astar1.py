@@ -44,7 +44,7 @@ def find_astar_trajectory(input, goal, obstacles_info):
         "mp_step": 10, # Important
         "N_steps": 10, # Important
         "range_steer_set": 20,
-        "max_iter": 50,
+        "max_iter": 5,
         "heuristic_type": "mix", # use mix here to test planner1
         "save_final_plot": True,
         "controlled_vehicle_config": {
@@ -139,29 +139,39 @@ def generate_using_hybrid_astar_three_trailer(input, goal, obstacles_info=None, 
     assert config is not None, "config should not be None"
     
     three_trailer_planner = alg_obs.ThreeTractorTrailerHybridAstarPlanner(ox, oy, config=config)
-    # try:
-    # t1 = time.time()
+    
+    t1 = time.time()
     path, control_list, rs_path = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=True, obstacles_info=obstacles_info)
-    # t2 = time.time()
-    # print("planning time:", t2 - t1)
-    # except: 
-    #     return None
+    t2 = time.time()
+    print("planning time:", t2 - t1)
+    
     if control_list is not None:
+        print("control_list: ", len(control_list))
         control_recover_list = action_recover_from_planner(control_list, simulation_freq=10, v_max=config["controlled_vehicle_config"]["v_max"], max_steer=config["controlled_vehicle_config"]["max_steer"])
         is_success = test_forward_simulation_three_trailer(input, goal, ox, oy, control_recover_list, simulation_freq=10)
+    else:
+        return False
     return is_success
+
+def change_goal(goal, distance):
+    x, y, yaw0, yawt1, yawt2, yawt3 = goal
+    x_new = x + distance * np.cos(yaw0)
+    y_new = y + distance * np.sin(yaw0)
+    return np.array([x_new, y_new, yaw0, yawt1, yawt2, yawt3]).astype(np.float32)
  
 
 def main():
     # run astar1(reaching env as a rl path to guide) to see the final test results
-    use_datasets = False
+    use_datasets = True
     # with open("datasets/reaching_results_with_obstacles.pickle", "rb") as f:
     #     datasets = pickle.load(f)  
     # with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
     #     datasets = pickle.load(f)
     if use_datasets:
-        with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
-            datasets = pickle.load(f)   
+        # with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
+        #     datasets = pickle.load(f)   
+        with open("datasets/goal_with_obstacles_info_list_hz.pickle", "rb") as f:
+            datasets = pickle.load(f)
     
     with open("configs/agents/eval/planner1_env.yaml", "r") as f:
         config = yaml.safe_load(f)
@@ -179,8 +189,7 @@ def main():
             }
             goal_with_obstacles_info_list.append(task_dict) 
     task_list = []
-    for i in range(10):
-        i = 11
+    for i in range(92, 100):
         if use_datasets:
             now_goal_with_obstacles_info_list = [goal_with_obstacles_info_list[i]]
             env.unwrapped.update_goal_with_obstacles_info_list(now_goal_with_obstacles_info_list)
@@ -188,6 +197,7 @@ def main():
         # env.unwrapped.real_render()
         input = o["achieved_goal"]
         goal = o["desired_goal"]
+        # new_goal = change_goal(goal, 6)
         obstacles_info = info["obstacles_info"]
     #     task_list.append((input, goal, obstacles_info))
     # astar_results = Parallel(n_jobs=-1)(delayed(find_astar_trajectory)(input, goal, obstacles_info) for input, goal, obstacles_info in task_list)
@@ -200,8 +210,8 @@ def main():
     # print("failed number: ", astar_results.count(False))
     print("failed number: ", failed_number)
     # # Save all failed cases to a single file
-    # with open('datasets/all_failed_cases_planner1.pkl', 'wb') as f:
-    #     pickle.dump(failed_cases, f)
+    with open('datasets/all_failed_cases_planner1_hz.pkl', 'wb') as f:
+        pickle.dump(failed_cases, f)
     
 if __name__ == "__main__":
     main()

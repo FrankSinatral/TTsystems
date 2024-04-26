@@ -27,7 +27,7 @@ astar_mp_steps: 10
 astar_N_steps: 10
 astar_max_iter: 5
 astar_heuristic_type: 'mix'
-whether_dataset: false
+whether_dataset: true
 dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
 
 
@@ -64,6 +64,15 @@ env_config:
     xi_max: 0.7853981633974483
     safe_d: 0.0
     safe_metric: 3.0
+  perception:
+    one_hot_representation:
+      d: 5
+      number: 8
+    one_hot_representation_enhanced:
+      d: 10
+      number: 8
+    lidar_detection_one_hot:
+      d: 5
   evaluate_mode: false
   goal_region_bound:
     x_min: -30
@@ -90,6 +99,6 @@ env_config:
   use_rgb: false
   observation: one_hot_representation
   use_gray: false
-  number_obstacles: 0
+  number_obstacles: 1
   max_length: 20
   min_length: 1

@@ -182,6 +182,16 @@ class SAC_ASTAR_META:
         from tractor_trailer_envs import register_tt_envs
         register_tt_envs()
         self.env, self.test_env = env_fn(config), env_fn(config)
+        # vehicle_type
+        self.vehicle_type = config["vehicle_type"]
+        if self.vehicle_type == "single_tractor":
+            self.number_bounding_box = 1
+        elif self.vehicle_type == "one_trailer":
+            self.number_bounding_box = 2
+        elif self.vehicle_type == "two_trailer":
+            self.number_bounding_box = 3
+        else:
+            self.number_bounding_box = 4
         if whether_dataset:
             # Fank: directly use the data from the datasets
             with open(dataset_path, 'rb') as f:
@@ -193,7 +203,11 @@ class SAC_ASTAR_META:
         if self.env.unwrapped.observation_type == 'original':
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float32)
         elif self.env.unwrapped.observation_type == "lidar_detection" or self.env.unwrapped.observation_type == "one_hot_representation":
-            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 32,), np.float32)
+            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + config["perception"]["one_hot_representation"]["number"]*self.number_bounding_box,), np.float32)
+        elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 9*self.number_bounding_box,), np.float32)
+        elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
+            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 98,), np.float32)
         else:
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 4,), np.float32)
         self.obs_dim = self.box.shape
@@ -206,9 +220,6 @@ class SAC_ASTAR_META:
         # Create actor-critic module and target networks
         self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
         self.ac_targ = deepcopy(self.ac)
-        
-        # vehicle_type
-        self.vehicle_type = config["vehicle_type"]
         
         # set up summary writer
         self.exp_name = logger_kwargs['exp_name']
@@ -436,6 +447,10 @@ class SAC_ASTAR_META:
                     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), True))
                 elif self.env.unwrapped.observation_type == "one_hot_representation":
                     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), True))
+                elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), True))
+                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), True))
                 ep_ret += r
                 ep_len += 1
             average_ep_ret += ep_ret
@@ -523,6 +538,10 @@ class SAC_ASTAR_META:
                     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]))
                 elif self.env.unwrapped.observation_type == "one_hot_representation":
                     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]))
+                elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
+                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]))
+                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]))
                 # a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]))
             else:
                 a = self.env.action_space.sample()
@@ -546,9 +565,12 @@ class SAC_ASTAR_META:
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d)
             elif self.env.unwrapped.observation_type == "lidar_detection":
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection']]), d)
+            elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot']]), d)
             elif self.env.unwrapped.observation_type == "one_hot_representation":
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation']]), d)
-            
+            elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
+                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation_enhanced']]), d)
             if self.whether_her:
                 # currently not used
                 temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info['crashed']))

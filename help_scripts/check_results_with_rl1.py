@@ -27,14 +27,14 @@ def get_current_time_format():
     formatted_time = current_time.strftime("%Y%m%d_%H%M%S")
     return formatted_time
 def main():
-    use_datasets = True
+    use_datasets = False
     # the script is for evaluating rl1's result
     # you can choose to evaluate the first 100's data on the dataset
     # or choose randomly from the env
-    # with open("datasets/goal_with_obstacles_info_list.pickle", "rb") as f:
-    #     datasets = pickle.load(f)
-    with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
+    with open("datasets/goal_with_obstacles_info_list_hz.pickle", "rb") as f:
         datasets = pickle.load(f)
+    # with open("datasets/all_failed_cases_rl0.pickle", "rb") as f:
+    #     datasets = pickle.load(f)
     # with open("datasets/all_failed_cases_rl1_obs2_linear.pickle", "rb") as f:
     #     datasets = pickle.load(f)
     with open("configs/agents/eval/rl1_env.yaml", "r") as f:
@@ -100,7 +100,9 @@ def main():
     # filename = 'runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240401_223636/model_2499999.pth'
     
     # dataset training
-    filename = 'runs_rl/meta-reaching-v0_rl1_one_hot_three_trailer_10_20240410_004916/model_final.pth'
+    # filename = 'runs_rl/meta-reaching-v0_rl1_one_hot_three_trailer_10_20240410_004916/model_final.pth'
+    # filename = "datasets/models/one_hot_model0.pth"
+    filename = "datasets/models/one_hot_model2.pth"
     
     
     # # number_obstacles=1 + linear penalty
@@ -120,13 +122,13 @@ def main():
             obstacles_info = data["obstacles_info"]
             task_dict = {
                 "goal": goal,
-                "obstacles_info": None, # obstacles_info
+                "obstacles_info": obstacles_info
             }
             goal_with_obstacles_info_list.append(task_dict) 
     
     failed_cases = []
     failed_number = 0
-    for i in range(len(datasets)):
+    for i in range(100):
         # goal_list = [goal_with_obstacles_info_list[i]["goal"]]
         # obstacles_info = goal_with_obstacles_info_list[i]["obstacles_info"]
         if use_datasets:
@@ -134,6 +136,7 @@ def main():
             env.unwrapped.update_goal_with_obstacles_info_list(now_goal_with_obstacles_info_list)
         
         o, info = env.reset(seed=i)
+        # env.real_render()
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not(terminated or truncated):
             # Take deterministic actions at test time

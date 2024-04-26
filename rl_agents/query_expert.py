@@ -266,7 +266,13 @@ def forward_simulation_three_trailer_meta(input, goal, ox, oy, control_list, sim
     if observation_type == "lidar_detection":
         state_lidar_detection = controlled_vehicle.lidar_detection(ox, oy)
     elif observation_type == "one_hot_representation":
-        state_one_hot_representation = controlled_vehicle.one_hot_representation(d=3, number=8, ox=ox, oy=oy)
+        # TODO: to align with the env
+        state_one_hot_representation = controlled_vehicle.one_hot_representation(d=5, number=8, ox=ox, oy=oy)
+    elif observation_type == "lidar_detection_one_hot":
+        state_lidar_detection_one_hot = controlled_vehicle.lidar_detection_one_hot(5, ox, oy)
+    elif observation_type == "one_hot_representation_enhanced":
+        # TODO: to align with the env
+        state_one_hot_representation_enhanced = controlled_vehicle.one_hot_representation_enhanced(d=10, number=8, ox=ox, oy=oy)
     
     for action_clipped in control_list:
         controlled_vehicle.step(action_clipped, 1 / simulation_freq)
@@ -280,10 +286,20 @@ def forward_simulation_three_trailer_meta(input, goal, ox, oy, control_list, sim
             next_state_lidar_detection = controlled_vehicle.lidar_detection(ox, oy)
             transition = [state, state_lidar_detection, action_clipped, next_state, next_state_lidar_detection]
             state_lidar_detection = next_state_lidar_detection
+        elif observation_type == "lidar_detection_one_hot":
+            next_state_lidar_detection_one_hot = controlled_vehicle.lidar_detection_one_hot(5, ox, oy)
+            transition = [state, state_lidar_detection_one_hot, action_clipped, next_state, next_state_lidar_detection_one_hot]
+            state_lidar_detection_one_hot = next_state_lidar_detection_one_hot
         elif observation_type == "one_hot_representation":
-            next_state_one_hot_representation = controlled_vehicle.one_hot_representation(d=3, number=8, ox=ox, oy=oy)
+            # TODO: to align with the env
+            next_state_one_hot_representation = controlled_vehicle.one_hot_representation(d=5, number=8, ox=ox, oy=oy)
             transition = [state, state_one_hot_representation, action_clipped, next_state, next_state_one_hot_representation]
             state_one_hot_representation = next_state_one_hot_representation
+        elif observation_type == "one_hot_representation_enhanced":
+            # TODO: to align with the env
+            next_state_one_hot_representation_enhanced = controlled_vehicle.one_hot_representation_enhanced(d=10, number=8, ox=ox, oy=oy)
+            transition = [state, state_one_hot_representation_enhanced, action_clipped, next_state, next_state_one_hot_representation_enhanced]
+            state_one_hot_representation_enhanced = next_state_one_hot_representation_enhanced
         
         transition_list.append(transition)
         state = next_state
@@ -411,6 +427,26 @@ def pack_transition_with_reward_meta(goal, transition_list, N_steps=10, observat
                     pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1, False])
                 else:
                     pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation]), -1, False])
+        elif observation_type == "one_hot_representation_enhanced":
+            state, state_one_hot_representation_enhanced, action, _, _ = transition_list[i]
+            next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+            _, _, _, next_state, next_state_one_hot_representation_enhanced = transition_list[next_state_index]
+            if i == len(transition_list) - N_steps:
+                #pack mamually with reward
+                # TODO: to align with the env
+                pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation_enhanced]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation_enhanced]), 15, True])
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal, state_one_hot_representation_enhanced]), action, np.concatenate([next_state, next_state, goal, next_state_one_hot_representation_enhanced]), -1, False])
+        elif observation_type == "lidar_detection_one_hot":
+            state, state_lidar_detection_one_hot, action, _, _ = transition_list[i]
+            next_state_index = min(i + N_steps - 1, len(transition_list) - 1)
+            _, _, _, next_state, next_state_lidar_detection_one_hot = transition_list[next_state_index]
+            if i == len(transition_list) - N_steps:
+                #pack mamually with reward
+                # TODO: to align with the env
+                pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection_one_hot]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection_one_hot]), 15, True])
+            else:
+                pack_transition_list.append([np.concatenate([state, state, goal, state_lidar_detection_one_hot]), action, np.concatenate([next_state, next_state, goal, next_state_lidar_detection_one_hot]), -1, False])
         i += N_steps
     return pack_transition_list
 

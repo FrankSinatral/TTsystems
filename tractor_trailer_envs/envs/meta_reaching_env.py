@@ -159,6 +159,19 @@ class TractorTrailerMetaReachingEnv(Env):
                 "safe_metric": 3.0, #[m] the safe metric for calculation
                 "xi_max": (np.pi) / 4, # jack-knife constraint  
             },
+            "perception": {
+                "one_hot_representation":{
+                    "d": 5, # [m]distance
+                    "number": 8, # number of regions
+                },
+                "one_hot_representation_enhanced": {
+                    "d": 10,
+                    "number": 8,
+                },
+                "lidar_detection_one_hot": {
+                    "d": 5,
+                },
+            },
             "outer_wall_bound": {
                 "x_min": -30, #[m]
                 "x_max": 30,
@@ -247,7 +260,7 @@ class TractorTrailerMetaReachingEnv(Env):
                 'achieved_goal': achieved_goal_space,
                 'desired_goal': desired_goal_space,
                 'observation': observation_space,
-                'one_hot_representation': spaces.Box(low=0, high=1, shape=(32,), dtype=np.float32),
+                'one_hot_representation': spaces.Box(low=0, high=1, shape=(self.config["perception"]["one_hot_representation"]["number"] * self.number_bounding_box,), dtype=np.float32),
             })
         elif self.observation_type == "one_hot_representation" and self.config["use_gray"]:
             self.observation_space = spaces.Dict({
@@ -257,6 +270,13 @@ class TractorTrailerMetaReachingEnv(Env):
                 'one_hot_representation': spaces.Box(low=0, high=1, shape=(32,), dtype=np.float32),
                 'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
             })
+        elif self.observation_type == "one_hot_representation_enhanced":
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'one_hot_representation_enhanced': spaces.Box(low=-np.inf, high=np.inf, shape=(2 + (self.number_bounding_box * 3 * self.config["perception"]["one_hot_representation_enhanced"]["number"]),), dtype=np.float32), #TODO: adjust
+            })
         elif self.observation_type == "lidar_detection" and (not self.config["use_gray"]):
             self.observation_space = spaces.Dict({
                 'achieved_goal': achieved_goal_space,
@@ -264,13 +284,21 @@ class TractorTrailerMetaReachingEnv(Env):
                 'observation': observation_space,
                 'lidar_detection': spaces.Box(low=0, high=100, shape=(32,), dtype=np.float32),
             }) # TODO: this is not always the case
-        elif self.observation_space == "lidar_detection" and self.config["use_gray"]:
+        elif self.observation_type == "lidar_detection" and self.config["use_gray"]:
             self.observation_space = spaces.Dict({
                 'achieved_goal': achieved_goal_space,
                 'desired_goal': desired_goal_space,
                 'observation': observation_space,
                 'lidar_detection': spaces.Box(low=0, high=100, shape=(32,), dtype=np.float32),
                 'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
+            })
+        elif self.observation_type == "lidar_detection_one_hot":
+            #TODO
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'lidar_detection_one_hot': spaces.Box(low=0, high=100, shape=(9*self.number_bounding_box,), dtype=np.float32),
             })
         else: 
             self.observation_space = spaces.Dict({
@@ -319,12 +347,16 @@ class TractorTrailerMetaReachingEnv(Env):
         self.vehicle_type = self.config["vehicle_type"]
         if self.vehicle_type == "single_tractor":
             self.controlled_vehicle = SingleTractor(self.config["controlled_vehicle_config"])
+            self.number_bounding_box = 1
         elif self.vehicle_type == "one_trailer":
             self.controlled_vehicle = OneTrailer(self.config["controlled_vehicle_config"])
+            self.number_bounding_box = 2
         elif self.vehicle_type == "two_trailer":
             self.controlled_vehicle = TwoTrailer(self.config["controlled_vehicle_config"])
+            self.number_bounding_box = 3
         else:
             self.controlled_vehicle = ThreeTrailer(self.config["controlled_vehicle_config"])
+            self.number_bounding_box = 4
         self.yawmax = np.pi
         
         self.observation_type = self.config["observation"]
@@ -538,15 +570,24 @@ class TractorTrailerMetaReachingEnv(Env):
                 ('observation', self.controlled_vehicle.observe().astype(np.float32)),
                 ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
-                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy))
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=self.config["perception"]["one_hot_representation"]["d"], \
+                    number=self.config["perception"]["one_hot_representation"]["number"], ox=self.ox, oy=self.oy))
             ])
         elif self.observation_type == "one_hot_representation" and self.config["use_gray"]:
             obs_dict = OrderedDict([
                 ('observation', self.controlled_vehicle.observe().astype(np.float32)),
                 ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
-                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)),
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=self.config["perception"]["one_hot_representation"]["d"], \
+                    number=self.config["perception"]["one_hot_representation"]["number"], ox=self.ox, oy=self.oy)),
                 ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "one_hot_representation_enhanced":
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("one_hot_representation_enhanced", self.controlled_vehicle.one_hot_representation_enhanced(d=10, number=8, ox=self.ox, oy=self.oy))
             ])
         elif self.observation_type == "lidar_detection" and (not self.config["use_gray"]):
             obs_dict = OrderedDict([
@@ -562,6 +603,14 @@ class TractorTrailerMetaReachingEnv(Env):
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
                 ("lidar_detection", self.controlled_vehicle.lidar_detection(self.ox, self.oy)),
                 ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "lidar_detection_one_hot":
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection_one_hot", self.controlled_vehicle.lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot"]["d"], \
+                    self.ox, self.oy)),
             ])
         elif self.observation_type == "obstacles_image":
             gray_image = self.render_obstacles()
@@ -637,8 +686,6 @@ class TractorTrailerMetaReachingEnv(Env):
     
     def step(self, action):
         old_state = self.controlled_vehicle.observe()
-        # self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)
-        # self.controlled_vehicle.lidar_detection(self.ox, self.oy)
         action_clipped = np.clip(action, -self.act_limit, self.act_limit)
         if self.config["use_rgb"]:
             old_rgb_image = self.render()
@@ -719,15 +766,31 @@ class TractorTrailerMetaReachingEnv(Env):
                 ('observation', state.astype(np.float32)),
                 ("achieved_goal", state.astype(np.float32)),
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
-                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy))
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(
+                    d=self.config["perception"]["one_hot_representation"]["d"], \
+                    number=self.config["perception"]["one_hot_representation"]["number"], \
+                    ox=self.ox, oy=self.oy))
             ])
         elif self.observation_type == "one_hot_representation" and self.config["use_gray"]:
             obs_dict = OrderedDict([
                 ('observation', state.astype(np.float32)),
                 ("achieved_goal", state.astype(np.float32)),
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
-                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(d=3, number=8, ox=self.ox, oy=self.oy)),
+                ("one_hot_representation", self.controlled_vehicle.one_hot_representation(
+                    d=self.config["perception"]["one_hot_representation"]["d"], \
+                    number=self.config["perception"]["one_hot_representation"]["number"], \
+                    ox=self.ox, oy=self.oy)),
                 ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "one_hot_representation_enhanced":
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("one_hot_representation_enhanced", self.controlled_vehicle.one_hot_representation_enhanced(
+                    d=self.config["perception"]["one_hot_representation_enhanced"]["d"], \
+                    number=self.config["perception"]["one_hot_representation_enhanced"]["number"], \
+                    ox=self.ox, oy=self.oy))
             ])
         elif self.observation_type == "lidar_detection" and (not self.config["use_gray"]):
             obs_dict = OrderedDict([
@@ -743,6 +806,14 @@ class TractorTrailerMetaReachingEnv(Env):
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
                 ("lidar_detection", self.controlled_vehicle.lidar_detection(self.ox, self.oy)),
                 ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "lidar_detection_one_hot":
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection_one_hot", self.controlled_vehicle.lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot"]["d"],\
+                    self.ox, self.oy)),
             ])
 
         info_dict = {
@@ -835,7 +906,6 @@ class TractorTrailerMetaReachingEnv(Env):
         self.plot_obstacles(ax)
 
         ax.axis('off')
-        # plt.savefig("runs_rl/meta_tractor_trailer_env_obstacles_1.png")
 
         # Convert the figure to a PIL Image object
         buf = io.BytesIO()
@@ -849,11 +919,11 @@ class TractorTrailerMetaReachingEnv(Env):
         
         # Convert all non-255 values to 0
         np_img = np.array(gray_img)
-        # don't know if this works
-        np_img = np.where(np_img != 255, 0, np_img)
+        # don't know if this works: currently take this form out
+        # np_img = np.where(np_img != 255, 0, np_img)
 
         # # Save the image
-        # Image.fromarray(np_img).save("runs_rl/meta_tractor_trailer_env_obstacles.png")
+        gray_img.save("runs_rl/meta_tractor_trailer_env_obstacles.png")
 
         buf.close()
         plt.close(fig)  # close the current figure window
@@ -862,51 +932,55 @@ class TractorTrailerMetaReachingEnv(Env):
 
         return np_img.astype(np.uint8)  # Return the PIL Image object
         
-    # def render_jingyu(self):
-    #     # JinYu's render function
-    #     """when rgb mode used, this is used for jinyu's render"""
-    #     fig, ax = plt.subplots()  # Set the size of the figure
+    def render_vehicles(self):
+        # plot vehicles and its corresponding goal
+        """when rgb mode used, this is used for jinyu's render"""
+        fig, ax = plt.subplots()  # Set the size of the figure
 
-    #     map_vertices = self.map.vertices + [self.map.vertices[0]]
-    #     map_x, map_y = zip(*map_vertices)
-    #     margin = 0.1
-    #     min_x, max_x = min(map_x), max(map_x)
-    #     min_y, max_y = min(map_y), max(map_y)
+        map_vertices = self.map.vertices + [self.map.vertices[0]]
+        map_x, map_y = zip(*map_vertices)
+        margin = 0.1
+        min_x, max_x = min(map_x), max(map_x)
+        min_y, max_y = min(map_y), max(map_y)
         
-    #     plt.plot(map_x, map_y, 'r-')
+        # plt.plot(map_x, map_y, 'r-')
         
-    #     # here we full the vehicle so we don't care the exact action
-    #     self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), 'blue', is_full=True)
-        
-    #     # Set the limits of the plot to the boundaries of the map
-    #     plt.xlim(min_x - margin, max_x + margin)
-    #     plt.ylim(min_y - margin, max_y + margin)
+        # here we full the vehicle so we don't care the exact action
+        self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), 'blue', is_full=True)
+        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
+        self.plot_vehicle = deepcopy(self.controlled_vehicle)
+        self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
+        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green', is_full=True)
+        # Set the limits of the plot to the boundaries of the map
+        plt.xlim(min_x - margin, max_x + margin)
+        plt.ylim(min_y - margin, max_y + margin)
 
         
-    #     # Set the aspect of the plot to be equal
-    #     ax.set_aspect('equal')
-    #     self.plot_obstacles(ax)
+        # Set the aspect of the plot to be equal
+        ax.set_aspect('equal')
+        # self.plot_obstacles(ax)
 
-    #     ax.axis('off')
+        ax.axis('off')
 
-    #     # Convert the figure to a PIL Image object
-    #     buf = io.BytesIO()
-    #     plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-    #     buf.seek(0)
-    #     img = Image.open(buf)
-
-    #     # Resize the image and convert it to RGB
-    #     rgb_img = img.convert('RGB')
+        # Convert the figure to a PIL Image object
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+        buf.seek(0)
+        img = Image.open(buf)
+        img_rgb = img.convert('RGB')
+        # # Resize the image to 128x128 and convert it to RGB
+        # img_resized = img.resize((128, 128)).convert('RGB')
         
-    #     # Convert all non-white (not 255,255,255) values to 0
-    #     np_img = np.array(rgb_img)
-    #     # Save the image
-    #     Image.fromarray(np_img).save("runs_rl/meta_tractor_trailer_env_rgb.png")
-
-    #     buf.close()
-    #     plt.close(fig) # close the current figure window
+        # Convert the resized image to a numpy array
+        np_img = np.array(img_rgb)
         
-    #     return np.transpose(np_img, (2, 0, 1))  # Return the PIL Image object
+        # Save the resized image
+        # img_rgb.save("runs_rl/meta_tractor_trailer_env_vehicles.png")
+
+        buf.close()
+        plt.close(fig) # close the current figure window
+        
+        return np.transpose(np_img, (2, 0, 1))  # Return the numpy array of the resized image
     
     def render_jingyu(self):
         # JinYu's render function

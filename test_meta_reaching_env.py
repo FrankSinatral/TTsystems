@@ -76,13 +76,14 @@ def main():
         # gray_image = env.render_obstacles()
         # rgb_image = env.render_jingyu()
         
-        rgb_image = env.render_jingyu_test()
+        # rgb_image = env.render_obstacles()
+        # v_image = env.render_vehicles()
         terminated, truncated = False, False
         while (not terminated) and (not truncated):
             action = env.action_space.sample()
             # env.unwrapped.real_render()
             obs, reward, terminated, truncated, info = env.step(action)
-            rgb_image = env.render_jingyu_test()
+            # rgb_image = env.render_vehicles()
         end_time = time.time()
         print("time:", end_time - start_time)
         
