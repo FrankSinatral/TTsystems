@@ -150,6 +150,68 @@ def lidar_one_hot(cx, cy, l, d, yaw, ox, oy, dist_threshold):
 
     return regions
 
+def plot_lidar_detection(cx, cy, l, d, yaw, dist_threshold):
+        # Convert to local coordinate system
+        corners = np.array([
+            [l/2, d/2],
+            [l/2, -d/2],
+            [-l/2, -d/2],
+            [-l/2, d/2]
+        ])
+        rotation_matrix = np.array([
+            [np.cos(yaw), -np.sin(yaw)],
+            [np.sin(yaw), np.cos(yaw)]
+        ])
+        rotated_corners = np.dot(corners, rotation_matrix.T)
+        rotated_corners[:, 0] += cx
+        rotated_corners[:, 1] += cy
+        # Define regions based on the description in lidar_one_hot
+        regions = [
+            [[l/2, -d/2], [l/2, d/2], [l/2 + dist_threshold, d/2], [l/2 + dist_threshold, -d/2]],
+            [[-l/2, d/2], [l/2, d/2], [l/2, d/2 + dist_threshold], [-l/2, d/2 + dist_threshold]],
+            [[-l/2, -d/2], [-l/2, d/2], [-l/2 - dist_threshold, d/2], [-l/2 - dist_threshold, -d/2]],
+            [[-l/2, -d/2], [l/2, -d/2], [l/2, -d/2 - dist_threshold], [-l/2, -d/2 - dist_threshold]]
+        ]
+
+        for region in regions:
+            region = np.array(region)
+            rotated_region = np.dot(region, rotation_matrix.T)
+            rotated_region[:, 0] += cx
+            rotated_region[:, 1] += cy
+            poly = plt.Polygon(rotated_region, fill=None, edgecolor='r', linestyle='--', linewidth=1)
+            plt.gca().add_patch(poly)
+
+        # Define the corners
+        corners_local = [
+            [l/2, d/2],
+            [-l/2, d/2],
+            [-l/2, -d/2],
+            [l/2, -d/2]
+        ]
+        angles = [
+            (0, np.pi/2),
+            (np.pi/2, np.pi),
+            (np.pi, 3*np.pi/2),
+            (3*np.pi/2, 2*np.pi)
+        ]
+
+        for i, corner in enumerate(corners_local):
+            center_local = np.array(corner)
+
+            # Generate points for the 1/4 circle in the local coordinate system
+            theta = np.linspace(*angles[i], 100)
+            x_circle_local = center_local[0] + dist_threshold * np.cos(theta)
+            y_circle_local = center_local[1] + dist_threshold * np.sin(theta)
+            
+            # Combine and transform to global coordinate system
+            circle_points_local = np.vstack((x_circle_local, y_circle_local)).T
+            circle_points_global = np.dot(circle_points_local, rotation_matrix.T)
+            circle_points_global[:, 0] += cx
+            circle_points_global[:, 1] += cy
+
+            # Plot the 1/4 circle
+            plt.plot(circle_points_global[:, 0], circle_points_global[:, 1], 'r--', linewidth=1)
+
 
 def shift_one_hot_representation(x, y, n):
     "利用这个函数将坐标表示为one-hot-vector"
@@ -1415,6 +1477,31 @@ class ThreeTrailer(Vehicle):
             ax.plot(flWheel[0, :], flWheel[1, :], color, linewidth=1)
             ax.plot(rlWheel[0, :], rlWheel[1, :], color, linewidth=1)
     
+    def get_bounding_box_list(self, state):
+        """get the bounding box list of the vehicle
+        - input: current state actually
+        - ouput: list of bounding box of which is (x, y, l, d, yaw) style
+        """
+        x, y, yaw, yawt1, yawt2, yawt3 = state
+        bounding_box_list = []
+        x_tractor, y_tractor = self.get_center_tractor()
+        x_tractor_l = self.RF + self.RB
+        x_tractor_w = self.W
+        bounding_box_list.append((x_tractor, y_tractor, x_tractor_l, x_tractor_w, yaw))
+        x_trailer1, y_trailer1 = self.get_center_trailer(1)
+        x_trailer1_l = self.RTB - self.RTF
+        x_trailer1_w = self.W
+        bounding_box_list.append((x_trailer1, y_trailer1, x_trailer1_l, x_trailer1_w, yawt1))
+        x_trailer2, y_trailer2 = self.get_center_trailer(2)
+        x_trailer2_l = self.RTB2 - self.RTF2
+        x_trailer2_w = self.W
+        bounding_box_list.append((x_trailer2, y_trailer2, x_trailer2_l, x_trailer2_w, yawt2))
+        x_trailer3, y_trailer3 = self.get_center_trailer(3)
+        x_trailer3_l = self.RTB3 - self.RTF3
+        x_trailer3_w = self.W
+        bounding_box_list.append((x_trailer3, y_trailer3, x_trailer3_l, x_trailer3_w, yawt3))
+        return bounding_box_list
+    
     def get_center_trailer(self, number: int) -> Tuple[float, float]:
         """
         get the center of tractor directly from the self.state
@@ -2148,6 +2235,53 @@ class ThreeTrailer(Vehicle):
 
         tractor_lidar_detection = lidar_one_hot(cx, cy, 2 * rc, self.W, yaw, ox, oy, d)
         return np.concatenate([tractor_lidar_detection, trailer1_lidar_detection, trailer2_lidar_detection, trailer3_lidar_detection], axis=0).astype(np.float32)
+    
+    def plot_lidar_detection_one_hot(self, d):
+        """
+        use the distance to rectangle
+        to give the exact distance of each erea,
+        since there are 3trialers, vector is a 32-dim vector astype=np.float32
+        """
+        x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        
+        # first trailer lidar detection
+        deltal1 = (self.RTF + self.RTB) / 2.0 #which is exactly C.RTR
+        rt1 = (self.RTB - self.RTF) / 2.0  #half length of trailer1
+
+        ctx1 = x - deltal1 * np.cos(yawt1)
+        cty1 = y - deltal1 * np.sin(yawt1)
+        
+        plot_lidar_detection(ctx1, cty1, 2 * rt1, self.W, yawt1, d)
+        
+        
+        # the second trailer lidar detection
+        deltal2 = (self.RTF2 + self.RTB2) / 2.0
+        rt2 = (self.RTB2 - self.RTF2) / 2.0
+        
+        ctx2 = ctx1 - deltal2 * np.cos(yawt2)
+        cty2 = cty1 - deltal2 * np.sin(yawt2)
+        
+        plot_lidar_detection(ctx2, cty2,  2 * rt2, self.W, yawt2, d)
+        
+                 
+        # the third trailer lidar detection
+        deltal3 = (self.RTF3 + self.RTB3) / 2.0
+        rt3 = (self.RTB3 - self.RTF3) / 2.0
+        
+        ctx3 = ctx2 - deltal3 * np.cos(yawt3)
+        cty3 = cty2 - deltal3 * np.sin(yawt3)
+        
+        plot_lidar_detection(ctx3, cty3, 2 * rt3, self.W, yawt3, d)
+        
+                    
+        # the tractor lidar detection
+        deltal = (self.RF - self.RB) / 2.0
+        rc = (self.RF + self.RB) / 2.0
+
+        cx = x + deltal * np.cos(yaw)
+        cy = y + deltal * np.sin(yaw)
+
+        plot_lidar_detection(cx, cy, 2 * rc, self.W, yaw, d)
     
 if __name__ == "__main__":
     parser = get_config()

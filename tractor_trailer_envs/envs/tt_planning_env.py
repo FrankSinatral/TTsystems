@@ -2,7 +2,7 @@ from gymnasium import Env
 from gymnasium import spaces
 from gymnasium.utils import seeding
 import numpy as np
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from collections import OrderedDict
 import math
 import os
@@ -32,6 +32,117 @@ import tractor_trailer_envs.map_and_obstacles as map_and_obs
 from copy import deepcopy
 from PIL import Image
 import io
+
+
+def rotate(point, angle, origin):
+    """Rotate a point counterclockwise by a given angle around a given origin.
+    The angle should be given in radians.
+    point: (px, py)
+    origin: (ox, oy)
+    """
+    ox, oy = origin
+    px, py = point
+
+    qx = ox + np.cos(angle) * (px - ox) - np.sin(angle) * (py - oy)
+    qy = oy + np.sin(angle) * (px - ox) + np.cos(angle) * (py - oy)
+
+    return qx, qy
+
+def calculate_rectangle_corners(params):
+    """Calculate the corners of a rectangle given its center, size and yaw angle.
+    params: (center_x, center_y, width, height, yaw) or (center_x, center_y, width, height)
+    output: [(x, y), (x, y), (x, y), (x, y)]
+    """
+    if len(params) == 4:
+        cx, cy, width, height = params
+        yaw = 0
+    elif len(params) == 5:
+        cx, cy, width, height, yaw = params
+    else:
+        raise ValueError("Input params must be a 4-tuple or 5-tuple")
+
+    corners = np.array([
+        [cx - width / 2, cy - height / 2],
+        [cx + width / 2, cy - height / 2],
+        [cx + width / 2, cy + height / 2],
+        [cx - width / 2, cy + height / 2]
+    ])
+    return [rotate(corner, yaw, (cx, cy)) for corner in corners]
+
+def is_rectangle_overlap(corners1, corners2):
+    """Check if two rectangles overlap using the Separating Axis Theorem.
+    input: corners1, corners2: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
+    output: True if overlap, False if not
+    This can be directly use for obstacle and bounding_box detection
+    """
+    def get_axes(corners):
+        axes = []
+        for i in range(len(corners)):
+            a, b = corners[i], corners[(i + 1) % len(corners)]
+            axis_normal = (b[1] - a[1], a[0] - b[0]) #(b[0] - a[0], b[1] - a[1]) previous direction
+            axes.append(axis_normal)
+        return axes
+
+    def project(corners, axis):
+        projections = [np.dot(vertex, axis) for vertex in corners]
+        return min(projections), max(projections)
+
+    axes1 = get_axes(corners1)
+    axes2 = get_axes(corners2)
+    axes = axes1 + axes2
+
+    for axis in axes:
+        min_proj1, max_proj1 = project(corners1, axis)
+        min_proj2, max_proj2 = project(corners2, axis)
+
+        if max_proj1 < min_proj2 or min_proj1 > max_proj2:
+            return False
+
+    return True
+
+
+def is_point_inside_rectangle(point, corners):
+    """Check if a point is inside a rectangle.
+    input: point: (x, y), corners: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
+    output: True if the point is inside, False if not
+    if a point is in an edge of the corners, it is false
+    """
+    def get_axes(corners):
+        axes = []
+        for i in range(len(corners)):
+            a, b = corners[i], corners[(i + 1) % len(corners)]
+            axis_normal = (b[1] - a[1], a[0] - b[0])
+            axes.append(axis_normal)
+        return axes
+
+    def project(points, axis):
+        projections = [np.dot(vertex, axis) for vertex in points]
+        return min(projections), max(projections)
+
+    axes = get_axes(corners)
+
+    for axis in axes:
+        min_proj_rect, max_proj_rect = project(corners, axis)
+        point_proj = np.dot(point, axis)
+
+        if point_proj <= min_proj_rect or point_proj >= max_proj_rect:
+            return False
+
+    return True
+
+def is_rectangle_inside(corners1, corners2):
+    """Check if rectangle 1 is completely inside rectangle 2.
+    input: corners1, corners2: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
+    output: True if corners1 is completely inside corners2, False if not
+    the logic is that if the for all corners of the first rectangle, they are inside the second rectangle
+    the result will be true
+    this function can be direcly use for obstacle/bounding_box per map_vertices
+    """
+    for point in corners1:
+        if not is_point_inside_rectangle(point, corners2):
+            return False
+
+    return True
         
 def is_rectangle_intersect(rect1, rect2):
     # check whether two rectangles intersect with each other
@@ -65,6 +176,8 @@ def mixed_norm(goal, final_state):
 def rotate(point, angle, origin):
     """Rotate a point counterclockwise by a given angle around a given origin.
     The angle should be given in radians.
+    point: (px, py)
+    origin: (ox, oy)
     """
     ox, oy = origin
     px, py = point
@@ -75,7 +188,12 @@ def rotate(point, angle, origin):
     return qx, qy
 
 def rectangle_corners(center, width, height, yaw):
-    """Calculate the corners of a rectangle given its center, size and yaw angle."""
+    """Calculate the corners of a rectangle given its center, size and yaw angle.
+    center: (cx, cy)
+    width: yaw
+    height: vertical to yaw
+    output: [(x, y), (), (), ()]
+    """
     cx, cy = center
     corners = np.array([
         [cx - width / 2, cy - height / 2],
@@ -86,7 +204,10 @@ def rectangle_corners(center, width, height, yaw):
     return [rotate(corner, yaw, center) for corner in corners]
 
 def separating_axis_theorem(corners1, corners2):
-    """Check if two rectangles overlap using the Separating Axis Theorem."""
+    """Check if two rectangles overlap using the Separating Axis Theorem.
+    input: corners1, corners2: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
+    output: True if overlap, False if not
+    """
     for a, b in zip(corners1, corners1[1:] + corners1[:1]):
         axis_normal = (b[1] - a[1], a[0] - b[0])
         projections1 = [np.dot(vertex, axis_normal) for vertex in corners1]
@@ -97,7 +218,8 @@ def separating_axis_theorem(corners1, corners2):
 
 def check_intersection(obstacle, obstacles_list, start, goal):
     """
-    
+    - obstacle: (center_x, center_y, width, height)
+    - obstacles_list: [(center_x, center_y, width, height), ...]
     - start/ goal: (center_x, center_y, width, height, yaw)
     """
     ox, oy, width, height = obstacle
@@ -115,7 +237,7 @@ def check_intersection(obstacle, obstacles_list, start, goal):
     return False
 
 
-class TractorTrailerMetaReachingEnv(Env):
+class TractorTrailerMetaPlanningEnv(Env):
 
     @classmethod
     def default_config(cls) -> dict:
@@ -123,10 +245,8 @@ class TractorTrailerMetaReachingEnv(Env):
             "verbose": False, 
             "vehicle_type": "single_tractor",
             "observation": "original",
-            "reward_type": 'sparse_reward',
+            "reward_type": 'sparse_reward_mod',
             "act_limit": 1, 
-            "distancematrix": [1.00, 1.00, 1.00, 1.00, 1.00, 1.00], # shape not change but can tune
-            "reward_weights": [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
             "max_episode_steps": 600,
             # "goal": (0, 0, 0, 0, 0, 0), # give with None (6 tuples)
             "evaluate_mode": False, # whether evaluate
@@ -172,36 +292,30 @@ class TractorTrailerMetaReachingEnv(Env):
                     "d": 5,
                 },
             },
-            "outer_wall_bound": {
-                "x_min": -30, #[m]
-                "x_max": 30,
-                "y_min": -30,
-                "y_max": 30,
-            },
-            "start_region_bound": {
-                "x_min": 0, #[m]
-                "x_max": 0,
-                "y_min": 0,
-                "y_max": 0,
-            },
-            "goal_region_bound": {
-                "x_min": -30, #[m]
-                "x_max": 30,
-                "y_min": -30,
-                "y_max": 30,
-            },
-            "goal_with_obstacles_info_list": None, # goal must be given together with obstacles_info as a list(each element a dict)
-            "obstacles_info_list": None,
-            "goal_list": None, # TODO
-            "start_list": None,
+            
+            "task_list": None, 
             "N_steps": 10, # number of steps for each action
-            "jack_knife_penalty": 0,
-            "collision_penalty": 0,
-            "use_rgb": True, # whether use rgb image as an observation
+            "jack_knife_penalty": -20,
+            "collision_penalty": -20,
+            "use_rgb": False, # whether use rgb image as an observation
             "use_gray": False, # whether use gray image as an observation
-            "number_obstacles": 2,
-            "max_length": 20,
-            "min_length": 1.0,
+            "generate_goals_config": {
+                "x_min": -30, #[m]
+                "x_max": 30,
+                "y_min": -30,
+                "y_max": 30,
+            },
+            "generate_obstacles_config": {
+                "number_obstacles": 2,
+                "max_length": 20,
+                "min_length": 1.0, 
+                "fixed_number": True,
+                "x_min": -30, #[m]
+                "x_max": 30,
+                "y_min": -30,
+                "y_max": 30,
+            },
+
             "with_obstacles_info": False,
         }
         
@@ -229,16 +343,11 @@ class TractorTrailerMetaReachingEnv(Env):
         
         vertices = [(dict["x_min"], dict["y_min"]), (dict["x_min"], dict["y_max"]), (dict["x_max"], dict["y_min"]), (dict["x_max"], dict["y_max"])]
         return MapBound(vertices)
-    
-    def check_map(self, outer_wall_dict: Dict[str, float], start_region_dict: Dict[str, float]) -> bool:
-        outer_wall_value_list = [a for _, a in outer_wall_dict.items()]
-        start_region_value_list = [b for _, b in start_region_dict.items()]
-        return all(item2 > item1 if index % 2 == 0 else item2 < item1 
-             for index, (item1, item2) in enumerate(zip(outer_wall_value_list, start_region_value_list)))
         
     def define_observation_space(self) -> None:
         """Define our observation space
         """
+        self.observation_type = self.config["observation"]
         achieved_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         desired_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
         observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
@@ -273,6 +382,7 @@ class TractorTrailerMetaReachingEnv(Env):
                 'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
             })
         elif self.observation_type == "one_hot_representation_enhanced":
+            # not working
             self.observation_space = spaces.Dict({
                 'achieved_goal': achieved_goal_space,
                 'desired_goal': desired_goal_space,
@@ -328,8 +438,6 @@ class TractorTrailerMetaReachingEnv(Env):
         if config:
             self.config.update(config)
         
-        assert self.check_map(self.config["outer_wall_bound"],
-                        self.config["start_region_bound"]), "invalid map define"
         if self.config["verbose"]:
             GREEN_BOLD = "\033[1m\033[32m"
             RESET = "\033[0m"
@@ -337,15 +445,35 @@ class TractorTrailerMetaReachingEnv(Env):
             pprint.pprint(config)
             print(RESET, end="")
         self.reward_type = self.config["reward_type"]
+        self.default_start = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        self.default_map_vertices = [(-50, -50), (-50, 50), (50, 50), (50, -50)]
         # fix start
         self.start = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
         self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
         # Define outer wall map, start region and goal region
-        self.map = self.define_map(self.config["outer_wall_bound"])
-        self.start_region = self.define_map(self.config["start_region_bound"])
-        self.goal_region = self.define_map(self.config["goal_region_bound"])
+        self.goal_region = self.define_map(self.config["generate_goals_config"])
         
         # pick car type
+        
+        self.pick_vehicle()
+        self.yawmax = np.pi
+        self.define_observation_space()
+        self.define_action_space()
+        
+        
+        # Optional Parameters
+        self.dt = 1 / self.config["simulation_freq"]
+        self.act_limit = self.config["act_limit"]
+        self.evaluate_mode = self.config['evaluate_mode']
+        self.fixed_number = self.config["generate_obstacles_config"]["fixed_number"]
+        # add a white image
+        self.white_image = np.full((3, 84, 84), 255, dtype=np.uint8)   
+                      
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+    
+    def pick_vehicle(self):
         self.vehicle_type = self.config["vehicle_type"]
         if self.vehicle_type == "single_tractor":
             self.controlled_vehicle = SingleTractor(self.config["controlled_vehicle_config"])
@@ -359,44 +487,6 @@ class TractorTrailerMetaReachingEnv(Env):
         else:
             self.controlled_vehicle = ThreeTrailer(self.config["controlled_vehicle_config"])
             self.number_bounding_box = 4
-        self.yawmax = np.pi
-        
-        self.observation_type = self.config["observation"]
-        self.define_observation_space()
-        self.define_action_space()
-        
-        
-        # Optional Parameters
-        self.distancematrix = np.diag(self.config["distancematrix"])
-        
-        self.dt = 1 / self.config["simulation_freq"]
-        self.act_limit = self.config["act_limit"]
-        self.evaluate_mode = self.config['evaluate_mode']
-        # add a white image
-        self.white_image = np.full((3, 84, 84), 255, dtype=np.uint8)   
-                      
-    def seed(self, seed=None):
-        self.np_random, seed = seeding.np_random(seed)
-        return [seed]
-    
-    def update_start_list(self, start_list):
-        self.config["start_list"] = start_list
-        
-    def clear_start_list(self):
-        self.config["start_list"] = None
-        
-    def update_goal_list(self, goal_list):
-        self.config["goal_list"] = goal_list
-        
-    def clear_goal_list(self):
-        self.config["goal_list"] = None
-    
-    def update_goal_with_obstacles_info_list(self, goal_with_obstales_info_list):
-        # the list must be given that the elment of the list is a dict
-        self.config["goal_with_obstacles_info_list"] = goal_with_obstales_info_list
-        
-    def clear_goal_with_obstacles_info_list(self):
-        self.config["goal_with_obstacles_info_list"] = None
     
     def generate_ox_oy_with_map_bound(self, obstacles_info):
         # Note that obstacels_info can be an empty list
@@ -428,33 +518,70 @@ class TractorTrailerMetaReachingEnv(Env):
         obstacles_list = []
         obstacles_info = []
         number = 0
-       
+        generate_trail_count = 0
+
+        # Since it is a equilibrium state, we can calculate the configuration of the vehicle as just one bounding box
+        # (x, y, l, d, yaw)
         start_configuration = self.controlled_vehicle.calculate_configurations_given_equilibrium(self.start)
         goal_configuration = self.controlled_vehicle.calculate_configurations_given_equilibrium(self.goal)
-        
+        start_corners = calculate_rectangle_corners(start_configuration)
+        goal_corners = calculate_rectangle_corners(goal_configuration)
         while number < number_obstacles:
-            center_x = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
-            center_y = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
+            center_x = self.np_random.uniform(self.config["generate_obstacles_config"]["x_min"], self.config["generate_obstacles_config"]["x_max"])
+            center_y = self.np_random.uniform(self.config["generate_obstacles_config"]["y_min"], self.config["generate_obstacles_config"]["y_max"])
             length_x = self.np_random.uniform(min_length, max_length)
             length_y = self.np_random.uniform(min_length, max_length)
             new_obstacle = (center_x, center_y, length_x, length_y)
-            
-            if not check_intersection(new_obstacle, obstacles_list, start_configuration, goal_configuration):
+            new_obstacle_corners = calculate_rectangle_corners(new_obstacle)
+            if not is_rectangle_overlap(start_corners, new_obstacle_corners) and not is_rectangle_overlap(goal_corners, new_obstacle_corners) and is_rectangle_inside(new_obstacle_corners, self.map.vertices):
                 obstacles_list.append(new_obstacle)
-                rectangle_corners = [(center_x - length_x / 2, center_y - length_y / 2), (center_x + length_x / 2, center_y - length_y / 2), \
-                    (center_x + length_x / 2, center_y + length_y / 2), (center_x - length_x / 2, center_y + length_y / 2)]
-                obstacles_info.append(rectangle_corners)
+                obstacles_info.append(new_obstacle_corners)
                 number += 1
+            generate_trail_count += 1
+            if generate_trail_count >= 100:
+                break
+            
         return obstacles_info
     
-    
-    def random_generate_goal(self):
-        x_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["x_min"], self.config["goal_region_bound"]["x_max"])
-        y_coordinates = self.np_random.uniform(self.config["goal_region_bound"]["y_min"], self.config["goal_region_bound"]["y_max"])
-        yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
-        return x_coordinates, y_coordinates, yaw_state
+    def generate_random_size_random_rectangle_obstacles(self, max_number_obstacles, min_length=1.0, max_length=10):
+        """generate random size random rectange obstacles
+        - number_obstacles: represent the number of obstacles(0-5)
+        - min_length: the minimum length of the obstacle(we fix the minmum length to 1.0)
+        - max_length: the maximum length of the obstacle
+        
+        Note that if we have no obstacles, the obstacles info will be [] instead of None
+        """
+        obstacles_list = []
+        obstacles_info = []
+        number = 0
+        number_obstacles = np.random.randint(0, max_number_obstacles + 1)  # 初始化障碍物数量
+        generate_trail_count = 0
+
+        # Since it is a equilibrium state, we can calculate the configuration of the vehicle as just one bounding box
+        # (x, y, l, d, yaw)
+        start_configuration = self.controlled_vehicle.calculate_configurations_given_equilibrium(self.start)
+        goal_configuration = self.controlled_vehicle.calculate_configurations_given_equilibrium(self.goal)
+        start_corners = calculate_rectangle_corners(start_configuration)
+        goal_corners = calculate_rectangle_corners(goal_configuration)
+        while number < number_obstacles:
+            center_x = self.np_random.uniform(self.config["generate_obstacles_config"]["x_min"], self.config["generate_obstacles_config"]["x_max"])
+            center_y = self.np_random.uniform(self.config["generate_obstacles_config"]["y_min"], self.config["generate_obstacles_config"]["y_max"])
+            length_x = self.np_random.uniform(min_length, max_length)
+            length_y = self.np_random.uniform(min_length, max_length)
+            new_obstacle = (center_x, center_y, length_x, length_y)
+            new_obstacle_corners = calculate_rectangle_corners(new_obstacle)
+            if not is_rectangle_overlap(start_corners, new_obstacle_corners) and not is_rectangle_overlap(goal_corners, new_obstacle_corners) and is_rectangle_inside(new_obstacle_corners, self.map.vertices):
+                obstacles_list.append(new_obstacle)
+                obstacles_info.append(new_obstacle_corners)
+                number += 1
+            generate_trail_count += 1
+            if generate_trail_count >= 100:
+                break
+            
+        return obstacles_info
     
     def extract_obstacles_properties(self, obstacles_info):
+        """Here the obstacles_info will be [] or have something"""
         if not obstacles_info:
             return []
 
@@ -486,85 +613,120 @@ class TractorTrailerMetaReachingEnv(Env):
         length = max_x - min_x
         width = max_y - min_y
         return (center_x, center_y, length, width)
+    
+    def check_bounding_box_list_inside_map(self, bounding_box_list):
+        for bounding_box in bounding_box_list:
+            bounding_box_corners = calculate_rectangle_corners(bounding_box)
+            if not is_rectangle_inside(bounding_box_corners, self.map.vertices):
+                return False
+        return True
+    
+    def check_bounding_box_list_not_collide_obstacles(self, bounding_box_list, obstacles_info):
+        for bounding_box in bounding_box_list:
+            bounding_box_corners = calculate_rectangle_corners(bounding_box)
+            for obstacle in obstacles_info:
+                if is_rectangle_overlap(bounding_box_corners, obstacle):
+                    return False
+        return True
             
+    def sample_goal(self, obstacles_info=None):
+        """
+        this function is for our generation of the goal
+        - case1: there is no obstacles we just sample our goal
+        
+        - case2: there is obstacles we have to check whether the goal is legal
+        """
+        max_generation_number = 100
+        generation_goal_count = 0
+        while generation_goal_count <= max_generation_number:
+            x_coordinates = self.np_random.uniform(self.config["generate_goals_config"]["x_min"], self.config["generate_goals_config"]["x_max"])
+            y_coordinates = self.np_random.uniform(self.config["generate_goals_config"]["y_min"], self.config["generate_goals_config"]["y_max"])
+            yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
+            current_goal = np.array([x_coordinates, y_coordinates, yaw_state, yaw_state, yaw_state, yaw_state], dtype=np.float32)
+            bounding_box_list = self.controlled_vehicle.get_bounding_box_list(current_goal)
+            if obstacles_info is None:
+                if self.check_bounding_box_list_inside_map(bounding_box_list):
+                    return current_goal
+            else: 
+                if self.check_bounding_box_list_inside_map(bounding_box_list) and self.check_bounding_box_list_not_collide_obstacles(bounding_box_list, obstacles_info):
+                    return current_goal
+            generation_goal_count += 1
+        print("generate goal failed")
     
-    
+    def sample_obstacles(self):
+        # sample fixed number obstacles
+        """Always after goal generation"""
+        if self.fixed_number:
+            return self.generate_fixed_size_random_rectangle_obstacles(number_obstacles=self.config["generate_obstacles_config"]["number_obstacles"], min_length=self.config["generate_obstacles_config"]["min_length"], max_length=self.config["generate_obstacles_config"]["max_length"])
+        # sample random number obstacles
+        else:
+            return self.generate_random_size_random_rectangle_obstacles(max_number_obstacles=self.config["generate_obstacles_config"]["number_obstacles"], min_length=self.config["generate_obstacles_config"]["min_length"], max_length=self.config["generate_obstacles_config"]["max_length"])
+
     def reset(self, **kwargs):
         
-        """reset function
-        obstacles_info: [[(x1, y1), (x1, y2), (x2, y2), (x2, y1)], [...]]
-        goal: (x, y, yaw0, yawt1, yawt2, yawt3)
+        """
+        reset function
+        this reset function gives a specific tractor-trailer planning task for 
+        the downstream process
         """
         if 'seed' in kwargs:
             self.seed(kwargs['seed'])
             np.random.seed(kwargs['seed'])
-            
-            
-        # currently under this env, we will not use the start_list for initialization
-        if self.config["start_list"] is not None:
-            # random choose between a given goal list
-            number_start = len(self.config["start_list"])
-            selected_index = np.random.randint(0, number_start)
-            self.start = tuple(self.config["start_list"][selected_index])
+        
+        
+        # This blocks given (self.start) (self.sx etc), (self.map)
+        # (self.goal) (self.gx etc) (self.obstacles_info)
+        # give one task every  
+        if self.config["task_list"] is None:
+            # Use the default map vertices
+            self.map = MapBound(self.default_map_vertices)
+            # Use the default start (fixed)
+            self.start = self.default_start
             self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
-        
-        if self.config["goal_with_obstacles_info_list"] is not None:
-            # the goal is given with respect with the obstacles_info,
-            # but here we have to check whether there is a collision
-            if self.config["start_list"] is None:
-                number_goal_with_obstacles_info = len(self.config["goal_with_obstacles_info_list"])
-                selected_index = np.random.randint(0, number_goal_with_obstacles_info)
-            # else use the same selected_index
-            goal = self.config["goal_with_obstacles_info_list"][selected_index]["goal"]
-            # currently set the controlled vehicle to the goal configuration
-            self.controlled_vehicle.reset_equilibrium(goal[0],goal[1],goal[2])
-            self.goal = tuple(self.controlled_vehicle.observe())
-            obstacles_info = self.config["goal_with_obstacles_info_list"][selected_index]["obstacles_info"]
-            ox, oy = self.generate_ox_oy_with_map_bound(obstacles_info)
-            assert not self.controlled_vehicle.is_collision(ox, oy), "goal is illegal with obstacles_info"
-            
-        
-        elif self.config["obstacles_info_list"] is not None:
-            # given obstacles info then sample a random goal
-            number_obstacles_info = len(self.config["obstacles_info_list"])
-            selected_index = np.random.randint(0, number_obstacles_info)
-            obstacles_info = self.config["obstacles_info_list"][selected_index]
-            ox, oy = self.generate_ox_oy_with_map_bound(obstacles_info)
-            while True:
-                # random sample a equilibrium goal from the goal region and check whether collision
-                x_coordinates, y_coordinates, yaw_state = self.random_generate_goal()
-                self.controlled_vehicle.reset_equilibrium(x_coordinates, y_coordinates, yaw_state)
-                self.goal = tuple(self.controlled_vehicle.observe())
-                if not self.controlled_vehicle.is_collision(ox, oy):
-                    break
-        
+            # Sample random goal(A procedure)
+            goal = self.sample_goal(obstacles_info=None)
+            self.goal = tuple(goal)
+            self.controlled_vehicle.reset_equilibrium(goal[0], goal[1], goal[2])
+            # Generate Obstacles
+            obstacles_info = self.sample_obstacles()
         else:
-            if self.config["goal_list"] is not None:
-                number_goal = len(self.config["goal_list"])
-                selected_goal_index = np.random.randint(0, number_goal)
-                self.goal = tuple(self.config["goal_list"][selected_goal_index])
-                x_coordinates, y_coordinates, yaw_state = self.goal[:3]
-                self.controlled_vehicle.reset_equilibrium(x_coordinates, y_coordinates, yaw_state)
+            assert isinstance(self.config["task_list"], List) and len(self.config["task_list"]) > 0, "task_list should be a list with at least one element"
+            selected_index = np.random.randint(0, len(self.config["task_list"]))
+            task_dict = self.config["task_list"][selected_index]
+            
+            map_vertices = task_dict.get("map_vertices")
+            start = task_dict.get("start")
+            goal = task_dict.get("goal")
+            obstacles_info = task_dict.get("obstacles_info")
+            if map_vertices is None:
+                self.map = MapBound(self.default_map_vertices)
             else:
-                # random sample a equilibrium goal from the goal region
-                x_coordinates, y_coordinates, yaw_state = self.random_generate_goal()
-                self.controlled_vehicle.reset_equilibrium(x_coordinates, y_coordinates, yaw_state)
-                self.goal = tuple(self.controlled_vehicle.observe())
-        
-        self.gx, self.gy, self.gyaw0, self.gyawt1, self.gyawt2, self.gyawt3 = self.goal
-        if (self.config["goal_with_obstacles_info_list"] is None) and (self.config["obstacles_info_list"] is None):
-            # given the goal and start, randomly initialize obstacles that given a fixed number of obstacles and sizes
-            obstacles_info = self.generate_fixed_size_random_rectangle_obstacles(number_obstacles=self.config["number_obstacles"], min_length=self.config["min_length"], max_length=self.config["max_length"])
-            ox, oy = self.generate_ox_oy_with_map_bound(obstacles_info)
-        
+                self.map = MapBound(task_dict["map_vertices"])
+            if start is None:
+                self.start = self.default_start
+            else:
+                self.start = tuple(start)
+            self.sx, self.sy, self.syaw0, self.syawt1, self.syawt2, self.syawt3 = self.start
+            if goal is None:
+                goal = self.sample_goal(obstacles_info=obstacles_info)
+            self.goal = tuple(goal)
+            self.controlled_vehicle.reset_equilibrium(goal[0], goal[1], goal[2])
+
+            if obstacles_info is None:
+                obstacles_info = self.sample_obstacles()
+
+        ox, oy = self.generate_ox_oy_with_map_bound(obstacles_info)
         
         # fix the env model once we reset, this self.ox, self.oy, self.obstacles_info will not change 
         # during the whole episode
+        # the sample points from the obstacles should be memorized
         self.ox, self.oy = ox, oy
         self.obstacles_info = obstacles_info
+        # self.obstacles_info will not None
         # here's a function to shift the obstacles info
         self.obstacles_properties = self.extract_obstacles_properties(self.obstacles_info)
         self.map_properties = self.extract_map_properties()
+        
         # shape the self.state to desired dim
         if self.vehicle_type == "single_tractor":
             self.controlled_vehicle.reset(self.sx, self.sy, self.syaw0)
@@ -687,7 +849,6 @@ class TractorTrailerMetaReachingEnv(Env):
         # broadcast
         distance = mixed_norm(goal.squeeze(), state_)
         # new_state_diff = state_ - goal
-        # new_weighted_distance = np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item()
         
         if distance < self.config["sparse_reward_threshold"]:
             reward = self.config['sucess_goal_reward_sparse']
@@ -702,7 +863,6 @@ class TractorTrailerMetaReachingEnv(Env):
         # broadcast
         distance = mixed_norm(goal.squeeze(), state_)
         # new_state_diff = state_ - goal
-        # new_weighted_distance = np.sqrt(np.dot(np.dot(new_state_diff, self.distancematrix), new_state_diff.T).item())
         
         if distance < self.config["sparse_reward_threshold"]:
             reward = self.config['sucess_goal_reward_sparse']
@@ -884,20 +1044,25 @@ class TractorTrailerMetaReachingEnv(Env):
         assert self.evaluate_mode
         plt.cla()
         ax = plt.gca()
-        plt.plot(self.ox, self.oy, 'sk', markersize=1)
+        plt.plot(self.ox, self.oy, 'sk', markersize=0.5)
+        plot_vehicle = deepcopy(self.controlled_vehicle)
         # plt.plot(ox_, oy_, 'sk', markersize=0.5)
         try:
-            self.controlled_vehicle.plot(ax, self.action_list[-1], 'blue')
+            plot_vehicle.plot(ax, self.action_list[-1], 'blue')
         except:
-            self.controlled_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
+            plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
         if self.observation_type == "lidar_detection_one_hot":
-            self.controlled_vehicle.plot_lidar_detection_one_hot(5)
+            plot_vehicle.plot_lidar_detection_one_hot(5)
         # Plot the goal vehicle
         gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
-        self.plot_vehicle = deepcopy(self.controlled_vehicle)
-        self.plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
-        self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
+        plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
+        plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'green')
         plt.axis('equal')
+        
+        # frame_dir = "rl_training/evaluation/frames"
+        # os.makedirs(frame_dir, exist_ok=True)
+        # plt.savefig(os.path.join(frame_dir, f"frame_{frame_idx:04d}.png"))
+        # plt.close()
         plt.savefig("runs_rl/meta_tractor_trailer_envs.png")
         plt.close()
     
@@ -1035,108 +1200,6 @@ class TractorTrailerMetaReachingEnv(Env):
         
         return np.transpose(np_img, (2, 0, 1))  # Return the numpy array of the resized image
     
-    def render_jingyu(self):
-        # JinYu's render function
-        """when rgb mode used, this is used for jinyu's render"""
-        fig, ax = plt.subplots()  # Set the size of the figure
-
-        map_vertices = self.map.vertices + [self.map.vertices[0]]
-        map_x, map_y = zip(*map_vertices)
-        margin = 0.1
-        min_x, max_x = min(map_x), max(map_x)
-        min_y, max_y = min(map_y), max(map_y)
-        
-        plt.plot(map_x, map_y, 'r-')
-        
-        # here we full the vehicle so we don't care the exact action
-        self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), 'blue', is_full=True)
-        
-        # Set the limits of the plot to the boundaries of the map
-        plt.xlim(min_x - margin, max_x + margin)
-        plt.ylim(min_y - margin, max_y + margin)
-
-        
-        # Set the aspect of the plot to be equal
-        ax.set_aspect('equal')
-        self.plot_obstacles(ax)
-
-        ax.axis('off')
-
-        # Convert the figure to a PIL Image object
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-        buf.seek(0)
-        img = Image.open(buf)
-
-        # Resize the image to 128x128 and convert it to RGB
-        img_resized = img.resize((128, 128)).convert('RGB')
-        
-        # Convert the resized image to a numpy array
-        np_img_resized = np.array(img_resized)
-        
-        # Save the resized image
-        # img_resized.save("runs_rl/meta_tractor_trailer_env_jingyu.png")
-
-        buf.close()
-        plt.close(fig) # close the current figure window
-        
-        return np.transpose(np_img_resized, (2, 0, 1))  # Return the numpy array of the resized image
-
-    
-    def render_jingyu_test(self):
-        # JinYu's render function
-        """when rgb mode used, this is used for jinyu's render"""
-        vehicle_colors = ["red", "blue", "green", "purple"]
-        fig, ax = plt.subplots()  # Set the size of the figure
-
-        map_vertices = self.map.vertices + [self.map.vertices[0]]
-        map_x, map_y = zip(*map_vertices)
-        margin = 0.1
-        min_x, max_x = min(map_x), max(map_x)
-        min_y, max_y = min(map_y), max(map_y)
-        
-        plt.plot(map_x, map_y, 'w-')
-        
-        # here we full the vehicle so we don't care the exact action
-        vehicle_plot = self.controlled_vehicle.plot(ax, np.array([0.0, 0.0]), vehicle_colors, is_full=True)
-        
-        
-        # Set the limits of the plot to the boundaries of the map
-        plt.xlim(min_x - margin, max_x + margin)
-        plt.ylim(min_y - margin, max_y + margin)
-
-        # Set the aspect of the plot to be equal
-        ax.set_aspect('equal')
-
-        ax.axis('off')
-
-        # Convert the figure to a PIL Image object
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-        buf.seek(0)
-        img = Image.open(buf)
-
-        # Convert the image to RGB
-        img_rgb = img.convert('RGB')
-        
-        # Crop the center 128x128 pixels of the image
-        width, height = img_rgb.size
-        left = (width - 128)/2
-        top = (height - 128)/2
-        right = (width + 128)/2
-        bottom = (height + 128)/2
-        img_cropped = img_rgb.crop((left, top, right, bottom))
-        
-        # Convert the cropped image to a numpy array
-        np_img = np.array(img_cropped)
-        
-        # Save the cropped image
-        img_cropped.save("runs_rl/meta_tractor_trailer_env_jingyu_test.png")
-
-        buf.close()
-        plt.close(fig) # close the current figure window
-        
-        return np.transpose(np_img, (2, 0, 1))  # Return the numpy array of the cropped image
     
     def reconstruct_image_from_observation(self, observation):
         # TODO: here we need to change
@@ -1272,13 +1335,13 @@ class TractorTrailerMetaReachingEnv(Env):
         # Save the animation
         writer = PillowWriter(fps=24)
         if not save_dir:
-            if not os.path.exists("./rl_training/gif/tt_meta_reaching"):
-                os.makedirs("./rl_training/gif/tt_meta_reaching")
+            if not os.path.exists("./rl_training/gif/tt_planning"):
+                os.makedirs("./rl_training/gif/tt_planning")
                 
-            base_path = "./rl_training/gif/tt_meta_reaching/path_simulation"
+            base_path = "./rl_training/gif/tt_planning/path_simulation"
             extension = ".gif"
             
-            all_files = os.listdir("./rl_training/gif/tt_meta_reaching")
+            all_files = os.listdir("./rl_training/gif/tt_planning")
             matched_files = [re.match(r'path_simulation(\d+)\.gif', f) for f in all_files]
             numbers = [int(match.group(1)) for match in matched_files if match]
             
