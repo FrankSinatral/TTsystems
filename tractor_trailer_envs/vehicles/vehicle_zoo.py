@@ -1257,12 +1257,7 @@ class ThreeTrailer(Vehicle):
             if not backward:
                 v = abs(v)
             steer = self.steer_scale(steer)
-            x_ = x + np.cos(yaw) * v * dt
-            y_ = y + np.sin(yaw) * v * dt
-            yaw_ = self.pi_2_pi(
-                yaw + v * dt * np.tan(steer) / self.WB
-                )
-            self.state = (x_, y_, yaw_)
+            
             
             x_ = x + np.cos(yaw) * v * dt
             y_ = y + np.sin(yaw) * v * dt

@@ -4,11 +4,8 @@ from gymnasium.utils import seeding
 import numpy as np
 from typing import Optional, Dict, List
 from collections import OrderedDict
-import math
 import os
-import sys
 import pprint
-import copy
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
@@ -238,7 +235,6 @@ def check_intersection(obstacle, obstacles_list, start, goal):
 
 
 class TractorTrailerMetaPlanningEnv(Env):
-
     @classmethod
     def default_config(cls) -> dict:
         return {
@@ -289,6 +285,9 @@ class TractorTrailerMetaPlanningEnv(Env):
                     "number": 8,
                 },
                 "lidar_detection_one_hot": {
+                    "d": 5,
+                },
+                "lida_detection_one_hot_triple": {
                     "d": 5,
                 },
             },
@@ -346,6 +345,7 @@ class TractorTrailerMetaPlanningEnv(Env):
         
     def define_observation_space(self) -> None:
         """Define our observation space
+        self.observation_type: "original", "one_hot_representation", "one_hot_representation_enhanced", "lidar_detection", "lidar_detection_one_hot", "lidar_detection_one_hot_triple"
         """
         self.observation_type = self.config["observation"]
         achieved_goal_space = spaces.Box(low=-np.inf, high=np.inf, shape=(6,), dtype=np.float32)
@@ -412,6 +412,13 @@ class TractorTrailerMetaPlanningEnv(Env):
                 'observation': observation_space,
                 'lidar_detection_one_hot': spaces.Box(low=0, high=100, shape=(9*self.number_bounding_box,), dtype=np.float32),
             })
+        elif self.observation_type == "lidar_detection_one_hot_triple":
+            self.observation_space = spaces.Dict({
+                'achieved_goal': achieved_goal_space,
+                'desired_goal': desired_goal_space,
+                'observation': observation_space,
+                'lidar_detection_one_hot_triple': spaces.Box(low=0, high=100, shape=(3*9*self.number_bounding_box,), dtype=np.float32),
+            })
         else: 
             self.observation_space = spaces.Dict({
                 'achieved_goal': achieved_goal_space,
@@ -432,6 +439,12 @@ class TractorTrailerMetaPlanningEnv(Env):
              self.config["act_limit"]], 
             dtype=np.float32)
         self.action_space = spaces.Box(low=action_low, high=action_high)
+        
+    def update_task_list(self, task_list):
+        self.config["task_list"] = task_list
+        
+    def clear_task_list(self):
+        self.config["task_list"] = None
         
     def configure(self, config: Optional[dict]) -> None:
         
@@ -454,12 +467,10 @@ class TractorTrailerMetaPlanningEnv(Env):
         self.goal_region = self.define_map(self.config["generate_goals_config"])
         
         # pick car type
-        
         self.pick_vehicle()
         self.yawmax = np.pi
         self.define_observation_space()
         self.define_action_space()
-        
         
         # Optional Parameters
         self.dt = 1 / self.config["simulation_freq"]
@@ -693,11 +704,10 @@ class TractorTrailerMetaPlanningEnv(Env):
             assert isinstance(self.config["task_list"], List) and len(self.config["task_list"]) > 0, "task_list should be a list with at least one element"
             selected_index = np.random.randint(0, len(self.config["task_list"]))
             task_dict = self.config["task_list"][selected_index]
-            
-            map_vertices = task_dict.get("map_vertices")
-            start = task_dict.get("start")
-            goal = task_dict.get("goal")
-            obstacles_info = task_dict.get("obstacles_info")
+            map_vertices = task_dict.get("map_vertices", None)
+            start = task_dict.get("start", None)
+            goal = task_dict.get("goal", None)
+            obstacles_info = task_dict.get("obstacles_info", None)
             if map_vertices is None:
                 self.map = MapBound(self.default_map_vertices)
             else:
@@ -819,6 +829,16 @@ class TractorTrailerMetaPlanningEnv(Env):
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
                 ("lidar_detection_one_hot", self.controlled_vehicle.lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot"]["d"], \
                     self.ox, self.oy)),
+            ])
+        elif self.observation_type == "lidar_detection_one_hot_triple":
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection_one_hot_triple", np.concatenate([self.controlled_vehicle.lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot_triple"]["d"], \
+                    self.ox, self.oy), self.controlled_vehicle.lidar_detection_one_hot(2*self.config["perception"]["lidar_detection_one_hot_triple"]["d"], \
+                    self.ox, self.oy), self.controlled_vehicle.lidar_detection_one_hot(3*self.config["perception"]["lidar_detection_one_hot_triple"]["d"], \
+                    self.ox, self.oy)])),
             ])
         elif self.observation_type == "obstacles_image":
             gray_image = self.render_obstacles()
@@ -1024,6 +1044,16 @@ class TractorTrailerMetaPlanningEnv(Env):
                 ("lidar_detection_one_hot", self.controlled_vehicle.lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot"]["d"],\
                     self.ox, self.oy)),
             ])
+        elif self.observation_type == "lidar_detection_one_hot_triple":
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+                ("lidar_detection_one_hot_triple", np.concatenate([self.controlled_vehicle.lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot_triple"]["d"],\
+                    self.ox, self.oy),self.controlled_vehicle.lidar_detection_one_hot(2*self.config["perception"]["lidar_detection_one_hot_triple"]["d"],\
+                    self.ox, self.oy),self.controlled_vehicle.lidar_detection_one_hot(3*self.config["perception"]["lidar_detection_one_hot_triple"]["d"],\
+                    self.ox, self.oy)])),
+            ])
 
         info_dict = {
             "crashed": crashed,
@@ -1052,7 +1082,11 @@ class TractorTrailerMetaPlanningEnv(Env):
         except:
             plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
         if self.observation_type == "lidar_detection_one_hot":
-            plot_vehicle.plot_lidar_detection_one_hot(5)
+            plot_vehicle.plot_lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot"]["d"])
+        if self.observation_type == "lidar_detection_one_hot_triple":
+            plot_vehicle.plot_lidar_detection_one_hot(self.config["perception"]["lidar_detection_one_hot_triple"]["d"])
+            plot_vehicle.plot_lidar_detection_one_hot(2*self.config["perception"]["lidar_detection_one_hot_triple"]["d"])
+            plot_vehicle.plot_lidar_detection_one_hot(3*self.config["perception"]["lidar_detection_one_hot_triple"]["d"])
         # Plot the goal vehicle
         gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
         plot_vehicle.reset(gx, gy, gyaw0, gyawt1, gyawt2, gyawt3)
@@ -1063,7 +1097,27 @@ class TractorTrailerMetaPlanningEnv(Env):
         # os.makedirs(frame_dir, exist_ok=True)
         # plt.savefig(os.path.join(frame_dir, f"frame_{frame_idx:04d}.png"))
         # plt.close()
-        plt.savefig("runs_rl/meta_tractor_trailer_envs.png")
+        plt.savefig("rl_training/tractor_trailer_plots.png")
+        plt.close()
+        
+    def real_free_large_render(self):
+        assert self.evaluate_mode
+        plt.cla()
+        ax = plt.gca()
+        plt.plot(self.ox, self.oy, 'sk', markersize=0.5)
+        plot_vehicle = deepcopy(self.controlled_vehicle)
+        # plt.plot(ox_, oy_, 'sk', markersize=0.5)
+        try:
+            plot_vehicle.plot(ax, self.action_list[-1], 'blue')
+        except:
+            plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
+        # if self.observation_type == "lidar_detection_one_hot":
+        #     plot_vehicle.plot_lidar_detection_one_hot(5)
+        
+        plt.axis('equal')
+        
+        
+        plt.savefig("rl_training/tractor_trailer_free_large_plots.png")
         plt.close()
     
     def render(self):
@@ -1342,6 +1396,101 @@ class TractorTrailerMetaPlanningEnv(Env):
             extension = ".gif"
             
             all_files = os.listdir("./rl_training/gif/tt_planning")
+            matched_files = [re.match(r'path_simulation(\d+)\.gif', f) for f in all_files]
+            numbers = [int(match.group(1)) for match in matched_files if match]
+            
+            if numbers:
+                save_index = max(numbers) + 1
+            else:
+                save_index = 1
+            ani.save(base_path + str(save_index) + extension, writer=writer) 
+        else:
+            ani.save(save_dir, writer=writer)
+            
+        plt.close(fig)
+    
+    
+    def run_simulation_explore(self, save_dir=None):
+        assert self.evaluate_mode # in case that you use the function not correctly
+        
+        from matplotlib.animation import FuncAnimation, PillowWriter
+        start_state = self.state_list[0]
+        gx, gy, gyaw0, gyawt1, gyawt2, gyawt3 = self.goal
+        if self.vehicle_type == "single_tractor":
+            real_dim = 3
+            gyawt1, gyawt2, gyawt3 = None, None, None
+        elif self.vehicle_type == "one_trailer":
+            real_dim = 4
+            gyawt2, gyawt3 = None, None
+        elif self.vehicle_type == "two_trailer":
+            real_dim = 5
+            gyawt3 = None
+        else:
+            real_dim = 6
+            
+        
+        start_state_to_list = list(start_state)
+        start_state_to_list[real_dim:] = [None] * (6 - real_dim)
+        sx, sy, syaw0, syawt1, syawt2, syawt3 = start_state_to_list
+        
+        pathx, pathy, pathyaw0 = [], [], []
+        pathyawt1, pathyawt2, pathyawt3 = [], [], []
+        # action0, action1 = [], []
+        for state in self.state_list:
+            state_to_list = list(state)
+            state_to_list[real_dim:] = [None] * (6 - real_dim)
+            x, y, yaw0, yawt1, yawt2, yawt3 = state_to_list
+            pathx.append(x)
+            pathy.append(y)
+            pathyaw0.append(yaw0)
+            pathyawt1.append(yawt1)
+            pathyawt2.append(yawt2)
+            pathyawt3.append(yawt3)
+        
+        # for action in self.action_list:
+        #     action0.append(action[0])
+        #     action1.append(action[1])
+            
+        fig, ax = plt.subplots()
+        def update(num):
+            ax.clear()
+            plt.axis("equal")
+            k = num
+            # plot env (obstacle)
+            # if dash_area.any():
+            #     ax.add_patch(rect)
+            plt.plot(self.ox, self.oy, "sk", markersize=1)
+            # plt.plot(ox_, oy_, "sk", markersize=0.5)
+            self.plot_vehicle = deepcopy(self.controlled_vehicle)
+            self.plot_vehicle.reset(sx, sy, syaw0, syawt1, syawt2, syawt3)
+            self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'blue')
+            # plot the planning path
+            plt.plot(pathx[:k], pathy[:k], linewidth=1.5, color='r')
+            self.plot_vehicle.reset(pathx[k], pathy[k], pathyaw0[k],pathyawt1[k], pathyawt2[k], pathyawt3[k])
+            if self.observation_type == "lidar_detection_one_hot":
+                detection_result = self.plot_vehicle.lidar_detection_one_hot(5, self.ox, self.oy)
+                self.plot_vehicle.plot_lidar_detection_one_hot(5)
+                detection_text = f"Detection: {detection_result}"
+                ax.text(0.05, 0.95, detection_text, transform=ax.transAxes, fontsize=10,
+                        verticalalignment='top', bbox=dict(facecolor='white', alpha=0.5))
+            try:
+                self.plot_vehicle.plot(ax, self.action_list[k], 'black')
+            except:
+                self.plot_vehicle.plot(ax, np.array([0.0, 0.0], dtype=np.float32), 'black')
+            
+
+        ani = FuncAnimation(fig, update, frames=len(pathx), repeat=True)
+
+        # Save the animation
+        writer = PillowWriter(fps=24)
+        if not save_dir:
+            if not os.path.exists("./rl_training/gif/tt_explore"):
+                os.makedirs("./rl_training/gif/tt_explore")
+                
+            base_path = "./rl_training/gif/tt_explore/path_simulation"
+            extension = ".gif"
+            
+            all_files = os.listdir("./rl_training/gif/tt_explore")
             matched_files = [re.match(r'path_simulation(\d+)\.gif', f) for f in all_files]
             numbers = [int(match.group(1)) for match in matched_files if match]
             
