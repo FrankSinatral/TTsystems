@@ -366,6 +366,12 @@ class TractorTrailerMetaPlanningEnv(Env):
                 'observation': observation_space,
                 'gray_image': spaces.Box(low=0, high=255, shape=(369,369), dtype=np.uint8),
             })
+        elif self.observation_type == "original_with_obstacles_info":
+            self.observation_space = spaces.Dict({
+            'achieved_goal': achieved_goal_space,
+            'desired_goal': desired_goal_space,
+            'observation': observation_space,
+        })
         elif self.observation_type == "one_hot_representation" and (not self.config["use_gray"]):
             self.observation_space = spaces.Dict({
                 'achieved_goal': achieved_goal_space,
@@ -783,6 +789,12 @@ class TractorTrailerMetaPlanningEnv(Env):
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
                 ("gray_image", self.gray_image)
             ])
+        elif self.observation_type == "original_with_obstacles_info":
+            obs_dict = OrderedDict([
+                ('observation', self.controlled_vehicle.observe().astype(np.float32)),
+                ("achieved_goal", self.controlled_vehicle.observe().astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
+            ])
         elif self.observation_type == "one_hot_representation" and (not self.config["use_gray"]):
             obs_dict = OrderedDict([
                 ('observation', self.controlled_vehicle.observe().astype(np.float32)),
@@ -989,6 +1001,12 @@ class TractorTrailerMetaPlanningEnv(Env):
                 ("achieved_goal", state.astype(np.float32)),
                 ("desired_goal", np.array(self.goal, dtype=np.float32)),
                 ("gray_image", self.gray_image)
+            ])
+        elif self.observation_type == "original_with_obstacles_info":
+            obs_dict = OrderedDict([
+                ('observation', state.astype(np.float32)),
+                ("achieved_goal", state.astype(np.float32)),
+                ("desired_goal", np.array(self.goal, dtype=np.float32)),
             ])
         elif self.observation_type == "one_hot_representation" and (not self.config["use_gray"]):
             obs_dict = OrderedDict([
