@@ -4425,7 +4425,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             self.qp = hyastar.QueuePrior()
         if self.heuristic_type == 'rl' or self.heuristic_type == 'mix':
             self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            
             # this is the planner1 config
             with open("configs/agents/training/planner1.yaml", "r") as f:
                 # TODO: each time you need to set the config file align with self.observation_type 
@@ -4434,17 +4433,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 config=config_algo,
                 device='cpu')
             filename = "datasets/models/original_model.pth"
-            # # filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_2849999.pth'
-            # if self.observation_type == "original":
-            #     # filename = "runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240407_215544/model_1499999.pth"
-            #     filename = "datasets/models/original_model.pth"
-            # elif self.observation_type == "one_hot_representation":
-            #     filename = "runs_rl/reaching-v0_sac_astar_three_trailer_10_20240322_002324/model_2999999.pth"
             self.agent.load(filename, whether_load_buffer=False)
-            # self.clipped_action = self.agent.test_env.unwrapped.act_limit
-            # self.agent_steps = self.agent.test_env.unwrapped.config["N_steps"]
-            # self.rl_controlled_vehicle = tt_envs.OneTrailer(self.config["controlled_vehicle_config"])
-            # print("load rl agent planner from", filename)
         elif self.heuristic_type == 'mix_lidar_detection_one_hot':
             self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
             with open("configs/agents/eval/rl1_lidar_detection_one_hot.yaml", "r") as f:
