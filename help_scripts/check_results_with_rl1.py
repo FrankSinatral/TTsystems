@@ -26,8 +26,20 @@ def get_current_time_format():
     # demo: 20230130_153042
     formatted_time = current_time.strftime("%Y%m%d_%H%M%S")
     return formatted_time
+
+def clear_obstacles(goal_with_obstacles_info_list):
+    for goal_with_obstacles_info in goal_with_obstacles_info_list:
+        goal_with_obstacles_info["obstacles_info"] = []
+    return 
+
+def shift_to_goal_list(goal_with_obstacles_info_list):
+    goal_list = []
+    for goal_with_obstacles_info in goal_with_obstacles_info_list:
+        goal_list.append(goal_with_obstacles_info["goal"])
+    return goal_list
+    
 def main():
-    use_datasets = False
+    use_datasets = True
     # the script is for evaluating rl1's result
     # you can choose to evaluate the first 100's data on the dataset
     # or choose randomly from the env
@@ -41,7 +53,8 @@ def main():
         # remember here you have to set the same as the training
         config = yaml.safe_load(f)
         
-    with open("configs/agents/eval/rl1_one_hot.yaml", "r") as f:
+    # with open("configs/agents/eval/rl1_one_hot.yaml", "r") as f:
+    with open("configs/agents/eval/rl1_lidar_detection_one_hot.yaml", "r") as f:
         # remember here you have to set the same as the training
         config_algo = yaml.safe_load(f)
     
@@ -102,7 +115,8 @@ def main():
     # dataset training
     # filename = 'runs_rl/meta-reaching-v0_rl1_one_hot_three_trailer_10_20240410_004916/model_final.pth'
     # filename = "datasets/models/one_hot_model0.pth"
-    filename = "datasets/models/one_hot_model2.pth"
+    # filename = "datasets/models/one_hot_model2.pth"
+    filename = "datasets/models/lidar_detection_one_hot_model2.pth"
     
     
     # # number_obstacles=1 + linear penalty
@@ -128,19 +142,23 @@ def main():
     
     failed_cases = []
     failed_number = 0
-    for i in range(100):
+    for i in range(11, 12):
         # goal_list = [goal_with_obstacles_info_list[i]["goal"]]
         # obstacles_info = goal_with_obstacles_info_list[i]["obstacles_info"]
         if use_datasets:
-            now_goal_with_obstacles_info_list = [goal_with_obstacles_info_list[i]]
-            env.unwrapped.update_goal_with_obstacles_info_list(now_goal_with_obstacles_info_list)
+            now_goal_with_obstacles_info_list = [goal_with_obstacles_info_list[11]]
+            # now_goal_with_obstacles_info_list = clear_obstacles(now_goal_with_obstacles_info_list)
+            goal_list = shift_to_goal_list(now_goal_with_obstacles_info_list)
+            env.unwrapped.update_goal_list(goal_list)
+            # env.unwrapped.update_goal_with_obstacles_info_list(now_goal_with_obstacles_info_list)
         
-        o, info = env.reset(seed=i)
+        o, info = env.reset()
         # env.real_render()
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not(terminated or truncated):
             # Take deterministic actions at test time
-            o, r, terminated, truncated, info = env.step(agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o["one_hot_representation"]]), True))
+            # o, r, terminated, truncated, info = env.step(agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o["one_hot_representation"]]), True)) # one_hot_representation
+            o, r, terminated, truncated, info = env.step(agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o["lidar_detection_one_hot"]]), True)) # lidar_detection_one_hot
             ep_ret += r
             ep_len += 1
         env.unwrapped.run_simulation()
