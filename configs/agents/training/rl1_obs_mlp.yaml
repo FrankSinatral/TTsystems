@@ -1,4 +1,4 @@
-algo_name: 'rl1_att'
+algo_name: 'rl1_obs_mlp'
 seed: 10
 env_name: 'planning-v0' # remember to switch script
 sac_steps_per_epoch: 50000
@@ -86,10 +86,10 @@ env_config:
     x_max: 30
     y_min: -30
     y_max: 30
-    number_obstacles: 2
+    number_obstacles: 5
     max_length: 20
     min_length: 1.0
-    fixed_number: true
+    fixed_number: false
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer
