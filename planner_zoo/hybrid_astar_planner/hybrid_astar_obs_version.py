@@ -30,6 +30,13 @@ def plot_rs_path(rspath, ox, oy):
     ylist = rspath.y
     plt.plot(xlist, ylist, 'b')
     
+def plot_rl_path(rlpath, ox, oy):
+    plt.axis("equal")
+    plt.plot(ox, oy, 'sk', markersize=1)
+    xlist = rlpath.x
+    ylist = rlpath.y
+    plt.plot(xlist, ylist, 'C1')
+    
 def plot_map(ox, oy):
     plt.axis("equal")
     plt.plot(ox, oy, 'sk', markersize=1)
@@ -40,6 +47,10 @@ def gym_reaching_tt_env_fn(config: dict):
 def gym_meta_reaching_tt_env_fn(config: dict):
     return gym.make("tt-meta-reaching-v0", config=config)
 
+
+# Apply our new-tt planning env to this agent for training
+def gym_tt_planning_env_fn(config: dict):
+    return gym.make("tt-planning-v0", config=config)
 
 def convert_obstacles_to_local(obstacles_info, n_curr_x, n_curr_y, n_curr_yaw):
     local_obstacles_info = []
@@ -52,6 +63,17 @@ def convert_obstacles_to_local(obstacles_info, n_curr_x, n_curr_y, n_curr_yaw):
             local_obstacle.append((x_local, y_local))
         local_obstacles_info.append(local_obstacle)
     return local_obstacles_info
+
+def convert_map_vertices_to_local(map_vertices, n_curr_x, n_curr_y, n_curr_yaw):
+    local_map_vertices = []
+    
+    for (x, y) in map_vertices:
+        # global->local
+        x_local = np.cos(n_curr_yaw) * (x - n_curr_x) + np.sin(n_curr_yaw) * (y - n_curr_y)
+        y_local = -np.sin(n_curr_yaw) * (x - n_curr_x) + np.cos(n_curr_yaw) * (y - n_curr_y)
+        local_map_vertices.append((x_local, y_local))
+    
+    return local_map_vertices
     
 def extract_rs_path_control(rspath, max_steer, maxc, N_step=10, max_step_size=0.2):
     """extract rs path control from a given rs path
@@ -4408,69 +4430,31 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             with open("configs/agents/training/planner1.yaml", "r") as f:
                 # TODO: each time you need to set the config file align with self.observation_type 
                 config_algo = yaml.safe_load(f)
-            
-            env_name = config_algo['env_name']
-            seed = config_algo['seed']
-            exp_name = env_name + '_' + config_algo['algo_name'] + '_' + str(seed)
-            logger_kwargs = {
-                'output_dir': config_algo['logging_dir'] + exp_name,
-                'output_fname': config_algo['output_fname'],
-                'exp_name': exp_name,
-            }
-            if config_algo['activation'] == 'ReLU':
-                activation_fn = nn.ReLU
-            elif config_algo['activation'] == 'Tanh':
-                activation_fn = nn.Tanh
-            else:
-                raise ValueError(f"Unsupported activation function: {config_algo['activation']}")
-            ac_kwargs = {
-                "hidden_sizes": tuple(config_algo['hidden_sizes']),
-                "activation": activation_fn
-            }
-            # with open("configs/envs/meta_reaching_v0_eval.yaml", 'r') as file:
-            #     config = yaml.safe_load(file)
-            
-            self.agent = agents.SAC_ASTAR_META(env_fn=gym_meta_reaching_tt_env_fn,
-                algo=config_algo['algo_name'],
-                ac_kwargs=ac_kwargs,
-                seed=seed,
-                steps_per_epoch=config_algo['sac_steps_per_epoch'],
-                epochs=config_algo['sac_epochs'],
-                replay_size=config_algo['replay_size'],
-                gamma=config_algo['gamma'],
-                polyak=config_algo['polyak'],
-                lr=config_algo['lr'],
-                alpha=config_algo['alpha'],
-                batch_size=config_algo['batch_size'],
-                start_steps=config_algo['start_steps'],
-                update_after=config_algo['update_after'],
-                update_every=config_algo['update_every'],
-                # missing max_ep_len
-                logger_kwargs=logger_kwargs, 
-                save_freq=config_algo['save_freq'],
-                num_test_episodes=config_algo['num_test_episodes'],
-                log_dir=config_algo['log_dir'],
-                whether_her=config_algo['whether_her'],
-                use_automatic_entropy_tuning=config_algo['use_auto'],
-                env_name=config_algo['env_name'],
-                pretrained=config_algo['pretrained'],
-                pretrained_itr=config_algo['pretrained_itr'],
-                pretrained_dir=config_algo['pretrained_dir'],
-                whether_astar=config_algo['whether_astar'],
-                config=config_algo["env_config"],
-                use_logger=config_algo['use_logger'],
+            self.agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
+                config=config_algo,
                 device='cpu')
-            # filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_2849999.pth'
-            if self.observation_type == "original":
-                # filename = "runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240407_215544/model_1499999.pth"
-                filename = "datasets/models/original_model.pth"
-            elif self.observation_type == "one_hot_representation":
-                filename = "runs_rl/reaching-v0_sac_astar_three_trailer_10_20240322_002324/model_2999999.pth"
+            filename = "datasets/models/original_model.pth"
+            # # filename = 'runs_rl/reaching-v0_sac_astar_three_trailer_50_20240129_230239/model_2849999.pth'
+            # if self.observation_type == "original":
+            #     # filename = "runs_rl/meta-reaching-v0_sac_astar_meta_three_trailer_10_20240407_215544/model_1499999.pth"
+            #     filename = "datasets/models/original_model.pth"
+            # elif self.observation_type == "one_hot_representation":
+            #     filename = "runs_rl/reaching-v0_sac_astar_three_trailer_10_20240322_002324/model_2999999.pth"
             self.agent.load(filename, whether_load_buffer=False)
             # self.clipped_action = self.agent.test_env.unwrapped.act_limit
             # self.agent_steps = self.agent.test_env.unwrapped.config["N_steps"]
             # self.rl_controlled_vehicle = tt_envs.OneTrailer(self.config["controlled_vehicle_config"])
             # print("load rl agent planner from", filename)
+        elif self.heuristic_type == 'mix_lidar_detection_one_hot':
+            self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            with open("configs/agents/eval/rl1_lidar_detection_one_hot.yaml", "r") as f:
+                config_algo = yaml.safe_load(f)
+            self.agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
+                config=config_algo,
+                device='cpu')
+            filename = "datasets/models/lidar_detection_one_hot_model2.pth"
+            self.agent.load(filename, whether_load_buffer=False)
+            
     
     
     def __init__(self, ox, oy, config: Optional[dict] = None) -> None:
@@ -5125,7 +5109,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         # Fank: check whether collision here
         # Always perform collision check, regardless of the acceptance
-        ind = range(0, len(path_x_list), self.config["collision_check_step"])
+        ind = range(0, len(path_x_list), int(self.config["collision_check_step"]/4))
         pathx = [path_x_list[k] for k in ind]
         pathy = [path_y_list[k] for k in ind]
         pathyaw = [path_yaw_list[k] for k in ind]
@@ -5624,7 +5608,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         return np.linalg.norm(curr_state - goal_state)
     
     
-    def rl_gear(self, n_curr, n_goal, obstacles_info=None, max_step=60, terminated=0.5):
+    def rl_gear(self, n_curr, n_goal, obstacles_info=None, map_vertices=None,  max_step=60, terminated=0.5):
         """In this function we use meta env as a simulated env
         As a result, we should change the obstacles_info to local coordinates
         
@@ -5648,24 +5632,28 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # Apply Coordinate rotation: global -> local
         n_goal_x_local = np.cos(n_curr_yaw) * (n_goal_x - n_curr_x) + np.sin(n_curr_yaw) * (n_goal_y - n_curr_y)
         n_goal_y_local = -np.sin(n_curr_yaw) * (n_goal_x - n_curr_x) + np.cos(n_curr_yaw) * (n_goal_y - n_curr_y)
-        start_list = [[0.0, 0.0, 0.0, n_curr_yawt1 - n_curr_yaw, n_curr_yawt2 - n_curr_yaw, n_curr_yawt3 - n_curr_yaw]]
+        start = np.array([0.0, 0.0, 0.0, n_curr_yawt1 - n_curr_yaw, n_curr_yawt2 - n_curr_yaw, n_curr_yawt3 - n_curr_yaw], dtype=np.float32)
         # test the "start from un-equili configuration" generalization
-        self.agent.test_env.unwrapped.update_start_list(start_list)
-        goal = [n_goal_x_local, n_goal_y_local, n_goal_yaw - n_curr_yaw, n_goal_yawt1 - n_curr_yaw, n_goal_yawt2 - n_curr_yaw, n_goal_yawt3 - n_curr_yaw]
-        
+        goal = np.array([n_goal_x_local, n_goal_y_local, n_goal_yaw - n_curr_yaw, n_goal_yawt1 - n_curr_yaw, n_goal_yawt2 - n_curr_yaw, n_goal_yawt3 - n_curr_yaw],
+                        dtype=np.float32)
         
         # global -> local obstacles_info
         local_obstacles_info = convert_obstacles_to_local(obstacles_info, n_curr_x, n_curr_y, n_curr_yaw)
         
+        # global -> local map_vertices
+        local_map_vertices = convert_map_vertices_to_local(map_vertices, n_curr_x, n_curr_y, n_curr_yaw)
         
-        goal_with_obstacles_info_list = []
-        goal_with_obstacles_info_dict = {
-            "goal": goal,
-            "obstacles_info": local_obstacles_info,
-        }
-        goal_with_obstacles_info_list.append(goal_with_obstacles_info_dict)
+        task_list = [
+            {
+                "start": start,
+                "goal": goal,
+                "obstacles_info": local_obstacles_info,
+                "map_vertices": local_map_vertices,
+            }
+        ]
+    
         # update the test_env to this goal
-        self.agent.test_env.unwrapped.update_goal_with_obstacles_info_list(goal_with_obstacles_info_list)
+        self.agent.test_env.unwrapped.update_task_list(task_list)
         # give to the reaching env to simulate path
         o, info = self.agent.test_env.reset()
         # check whether accept this kind of obstacles
@@ -5674,7 +5662,10 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # here we take out the truncated to test "go-further" generalization
         while not(terminated):
             # Take deterministic actions at test time 
-            a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True)
+            if self.heuristic_type == "mix":
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), deterministic=True)
+            elif self.heuristic_type == "mix_lidar_detection_one_hot":
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), deterministic=True)
             o, r, terminated, truncated, info = self.agent.test_env.step(a)
             ep_ret += r
             ep_len += 1
@@ -5762,6 +5753,30 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # self.agent.test_env.unwrapped.run_simulation()
         return find_feasible, rl_path
     
+    def check_start_mp_feasible(self, start:np.ndarray) -> bool:
+        """first check whether the start point is feasible 
+        given a complex obstacles environment(not collision)
+        """
+        self.sx, self.sy, self.syaw, self.syawt1, self.syawt2, self.syawt3 = start
+        self.syaw, self.syawt1, self.syawt2, self.syawt3 = self.pi_2_pi(self.syaw), self.pi_2_pi(self.syawt1), self.pi_2_pi(self.syawt2), self.pi_2_pi(self.syawt3)
+        self.sxr, self.syr = round(self.sx / self.xyreso), round(self.sy / self.xyreso)
+        self.syawr = round(self.syaw / self.yawreso)
+        nstart = hyastar.Node_three_trailer(self.vehicle, self.sxr, self.syr, self.syawr, 1, \
+            [self.sx], [self.sy], [self.pi_2_pi(self.syaw)], [self.pi_2_pi(self.syawt1)], [self.pi_2_pi(self.syawt2)], [self.pi_2_pi(self.syawt3)], [1], 0.0, 0.0, -1)
+        if not self.is_index_ok(nstart, self.config["collision_check_step"]):
+            sys.exit("illegal start configuration")
+            
+    
+        steer_set, direc_set = self.calc_motion_set()
+        whether_feasible = False
+        for i in range(len(steer_set)):
+            node = self.calc_next_node(nstart, self.calc_index(nstart), steer_set[i], direc_set[i])
+            if not node:
+                continue
+            if self.is_index_ok(node, int(self.config["collision_check_step"]/4)):
+                # not collision mp
+                return True    
+        return whether_feasible
     
     def plan_new_version(self, start:np.ndarray, goal:np.ndarray, get_control_sequence:bool, verbose=False, *args, **kwargs):
         """
@@ -5777,27 +5792,28 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         if 'obstacles_info' in kwargs:
             # [] or [[(),(),(),()],...]
             obstacles_info = kwargs['obstacles_info']
+        if 'map_vertices' in kwargs:
+            map_vertices = kwargs["map_vertices"]
+        
         self.sx, self.sy, self.syaw, self.syawt1, self.syawt2, self.syawt3 = start
-        self.gx, self.gy, self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = goal
         self.syaw, self.syawt1, self.syawt2, self.syawt3 = self.pi_2_pi(self.syaw), self.pi_2_pi(self.syawt1), self.pi_2_pi(self.syawt2), self.pi_2_pi(self.syawt3)
-        self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = self.pi_2_pi(self.gyaw), self.pi_2_pi(self.gyawt1), self.pi_2_pi(self.gyawt2), self.pi_2_pi(self.gyawt3)
         self.sxr, self.syr = round(self.sx / self.xyreso), round(self.sy / self.xyreso)
-        self.gxr, self.gyr = round(self.gx / self.xyreso), round(self.gy / self.xyreso)
         self.syawr = round(self.syaw / self.yawreso)
-        self.gyawr = round(self.gyaw / self.yawreso)
-        
-        
-        
-        # initialzie start and goal node class
         nstart = hyastar.Node_three_trailer(self.vehicle, self.sxr, self.syr, self.syawr, 1, \
             [self.sx], [self.sy], [self.pi_2_pi(self.syaw)], [self.pi_2_pi(self.syawt1)], [self.pi_2_pi(self.syawt2)], [self.pi_2_pi(self.syawt3)], [1], 0.0, 0.0, -1)
-        ngoal = hyastar.Node_three_trailer(self.vehicle, self.gxr, self.gyr, self.gyawr, 1, \
-            [self.gx], [self.gy], [self.pi_2_pi(self.gyaw)], [self.pi_2_pi(self.gyawt1)], [self.pi_2_pi(self.gyawt2)], [self.pi_2_pi(self.gyawt3)], [1], 0.0, 0.0, -1)
-        # check whether valid
         if not self.is_index_ok(nstart, self.config["collision_check_step"]):
             sys.exit("illegal start configuration")
+        
+        self.gx, self.gy, self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = goal
+        self.gyaw, self.gyawt1, self.gyawt2, self.gyawt3 = self.pi_2_pi(self.gyaw), self.pi_2_pi(self.gyawt1), self.pi_2_pi(self.gyawt2), self.pi_2_pi(self.gyawt3)
+        self.gxr, self.gyr = round(self.gx / self.xyreso), round(self.gy / self.xyreso)
+        self.gyawr = round(self.gyaw / self.yawreso)
+        ngoal = hyastar.Node_three_trailer(self.vehicle, self.gxr, self.gyr, self.gyawr, 1, \
+            [self.gx], [self.gy], [self.pi_2_pi(self.gyaw)], [self.pi_2_pi(self.gyawt1)], [self.pi_2_pi(self.gyawt2)], [self.pi_2_pi(self.gyawt3)], [1], 0.0, 0.0, -1)
         if not self.is_index_ok(ngoal, self.config["collision_check_step"]):
             sys.exit("illegal goal configuration")
+        
+        
         # calculate heuristic for obstacle
         if self.obs:
             self.hmap = hyastar.calc_holonomic_heuristic_with_obstacle(ngoal, self.P.ox, self.P.oy, self.heuristic_reso, self.heuristic_rr)
@@ -5844,7 +5860,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         elif self.heuristic_type == "rl":
             # TODO wait for RL to guide search
             t1 = time.time()
-            find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info)
+            find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
             t2 = time.time()
             print("time for rl simulation:", t2 - t1)
             if find_feasible:
@@ -5867,7 +5883,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
         else:
             # Fank: Mixture of two gears
-            find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info)
+            find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
             if find_feasible:
                 fnode = path.info["final_node"]
                 find_rl_path = True
@@ -5913,14 +5929,14 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 print("failed finding a feasible path")
                 if self.config["plot_failed_path"]:
                     self.extract_failed_path(closed_set, nstart)
-                return None, None, None
+                return None, None, None, None
             count += 1
             # add if the loop's too much
             if count > self.max_iter:
                 print("waste a long time to find")
                 if self.config["plot_failed_path"]:
                     self.extract_failed_path(start, goal, closed_set, nstart)
-                return None, None, None
+                return None, None, None, None
             
             ind = self.qp.get()
             n_curr = open_set[ind]
@@ -5933,7 +5949,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 if not node:
                     # encounter jack_knife
                     continue
-                if not self.is_index_ok(node, self.config["collision_check_step"]):
+                if not self.is_index_ok(node, int(self.config["collision_check_step"]/4)):
                     # check go outside or collision
                     continue
                 node_ind = self.calc_index(node)
@@ -5966,7 +5982,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                     elif self.heuristic_type == "rl":
                         # wait for RL to guide search
                         t1 = time.time()
-                        find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info)
+                        find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
                         t2 = time.time()
                         print("time for rl simulation:", t2 - t1)
                         if find_feasible:
@@ -5988,7 +6004,12 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             # self.qp.put(node_ind, cost_qp)
                             self.qp.put(node_ind, self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
                     else:
-                        find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info)
+                        find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+                        if self.config["plot_expand_tree"]:
+                            self.plot_expand_tree(start, goal, closed_set, open_set)
+                            plot_rl_path(path, self.ox, self.oy)
+                            plt.savefig("rl_training/savefig.png")
+                            plt.close()
                         if find_feasible:
                             fnode = path.info["final_node"]
                             find_rl_path = True
@@ -5998,7 +6019,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             # if self.config["plot_expand_tree"]:
                             #     plot_rs_path(rl_path, self.ox, self.oy)
                             #     self.plot_expand_tree(start, goal, closed_set, open_set)
-                                # plt.close()
+                            #     plt.savefig("rl_training/savefig.png")
+                            #     plt.close()
                             if verbose:
                                 print("find via rl path")
                                 print("final expansion node number:", count)
@@ -6006,16 +6028,18 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             break
                         else: 
                             find_feasible, path = self.rs_gear(node, ngoal)
+                            if self.config["plot_expand_tree"]:
+                                self.plot_expand_tree(start, goal, closed_set, open_set)
+                                plot_rs_path(path, self.ox, self.oy)
+                                plt.savefig("rl_training/savefig.png")
+                                plt.close()
                             if find_feasible:
                                 fnode = path.info["final_node"]
                                 find_rs_path = True
                                 update = find_feasible
                                 rs_path = path
                                 rs_control_list = path.rscontrollist
-                                # if self.config["plot_expand_tree"]:
-                                #     plot_rs_path(rs_path, self.ox, self.oy)
-                                #     self.plot_expand_tree(start, goal, closed_set, open_set)
-                                #     # plt.close()
+                                
                                 if verbose:
                                     print("find via rs path")
                                     print("final expansion node number:", count)
@@ -6025,11 +6049,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                 break
                             else:
                                 self.qp.put(node_ind, self.calc_hybrid_cost_simplify(node, ngoal, path.rscost))
-                    if self.config["plot_expand_tree"]:
-                        self.plot_expand_tree(start, goal, closed_set, open_set)
-                        plot_rs_path(path, self.ox, self.oy)
-                        plt.savefig("rl_training/savefig.png")
-                        plt.close() 
+                    # if self.config["plot_expand_tree"]:
+                    #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                    #     plot_rs_path(path, self.ox, self.oy)
+                    #     plt.savefig("rl_training/savefig.png")
+                    #     plt.close() 
                 else:
                     if open_set[node_ind].cost > node.cost:
                         open_set[node_ind] = node
@@ -6056,7 +6080,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     
                             elif self.heuristic_type == "rl":
                                 t1 = time.time()
-                                find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info)
+                                find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
                                 t2 = time.time()
                                 print("time for rl simulation:", t2 - t1)
                                 if find_feasible:
@@ -6080,17 +6104,18 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost) 
                                     
                             else:
-                                find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info)
+                                find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+                                if self.config["plot_expand_tree"]:
+                                    self.plot_expand_tree(start, goal, closed_set, open_set)
+                                    plot_rl_path(path, self.ox, self.oy)
+                                    plt.savefig("rl_training/savefig.png")
+                                    plt.close()
                                 if find_feasible:
                                     fnode = path.info["final_node"]
                                     find_rl_path = True
                                     update = find_feasible
                                     rl_path = path
                                     rl_control_list = path.rlcontrollist
-                                    # if self.config["plot_expand_tree"]:
-                                    #     plot_rs_path(rl_path, self.ox, self.oy)
-                                    #     self.plot_expand_tree(start, goal, closed_set, open_set)
-                                        # plt.close()
                                     if verbose:
                                         print("find via rl path")
                                         print("final expansion node number:", count)
@@ -6098,16 +6123,18 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     break
                                 else: 
                                     find_feasible, path = self.rs_gear(node, ngoal)
+                                    if self.config["plot_expand_tree"]:
+                                        self.plot_expand_tree(start, goal, closed_set, open_set)
+                                        plot_rs_path(path, self.ox, self.oy)
+                                        plt.savefig("rl_training/savefig.png")
+                                        plt.close()
                                     if find_feasible:
                                         fnode = path.info["final_node"]
                                         find_rs_path = True
                                         update = find_feasible
                                         rs_path = path
                                         rs_control_list = path.rscontrollist
-                                        # if self.config["plot_expand_tree"]:
-                                        #     plot_rs_path(rs_path, self.ox, self.oy)
-                                        #     self.plot_expand_tree(start, goal, closed_set, open_set)
-                                        #     # plt.close()
+                                        
                                         if verbose:
                                             print("find via rs path")
                                             print("final expansion node number:", count)
@@ -6117,36 +6144,36 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                         break
                                     else:
                                         self.qp.put(node_ind, self.calc_hybrid_cost_simplify(node, ngoal, path.rscost))
-                    if self.config["plot_expand_tree"]:
-                        self.plot_expand_tree(start, goal, closed_set, open_set)
-                        plot_rs_path(path, self.ox, self.oy)
-                        plt.savefig("rl_training/savefig.png")
-                        plt.close()         
+                    # if self.config["plot_expand_tree"]:
+                    #     self.plot_expand_tree(start, goal, closed_set, open_set)
+                    #     plot_rs_path(path, self.ox, self.oy)
+                    #     plt.savefig("rl_training/savefig.png")
+                    #     plt.close()         
             if self.config["plot_expand_tree"]:
                 self.plot_expand_tree(start, goal, closed_set, open_set)
                 plot_rs_path(path, self.ox, self.oy)
                 plt.savefig("rl_training/savefig.png")
                 plt.close() 
         
-        if self.config["save_final_plot"]:
-            self.plot_expand_tree(start, goal, closed_set, open_set)
-            plot_rs_path(path, self.ox, self.oy)
-            if not os.path.exists("./rl_training/planner_png/tt_meta_reaching"):
-                os.makedirs("./rl_training/planner_png/tt_meta_reaching")
+        # if self.config["save_final_plot"]:
+        #     self.plot_expand_tree(start, goal, closed_set, open_set)
+        #     plot_rs_path(path, self.ox, self.oy)
+        #     if not os.path.exists("./rl_training/planner_png/tt_meta_reaching"):
+        #         os.makedirs("./rl_training/planner_png/tt_meta_reaching")
 
-            base_path = "./rl_training/planner_png/tt_meta_reaching/path_simulation"
-            extension = ".png"
+        #     base_path = "./rl_training/planner_png/tt_meta_reaching/path_simulation"
+        #     extension = ".png"
 
-            all_files = os.listdir("./rl_training/planner_png/tt_meta_reaching")
-            matched_files = [re.match(r'path_simulation(\d+)\.png', f) for f in all_files]
-            numbers = [int(match.group(1)) for match in matched_files if match]
+        #     all_files = os.listdir("./rl_training/planner_png/tt_meta_reaching")
+        #     matched_files = [re.match(r'path_simulation(\d+)\.png', f) for f in all_files]
+        #     numbers = [int(match.group(1)) for match in matched_files if match]
 
-            if numbers:
-                save_index = max(numbers) + 1
-            else:
-                save_index = 1
-            plt.savefig(base_path + str(save_index) + extension)
-            plt.close()
+        #     if numbers:
+        #         save_index = max(numbers) + 1
+        #     else:
+        #         save_index = 1
+        #     plt.savefig(base_path + str(save_index) + extension)
+        #     plt.close()
         
         
         if verbose:
@@ -6154,16 +6181,34 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         if get_control_sequence:
             path, expand_control_list = self.extract_path_and_control(closed_set, fnode, nstart,find_rs_path=find_rs_path, find_rl_path=find_rl_path)
-            
+            if self.config["save_final_plot"]:
+                self.plot_expand_tree(start, goal, closed_set, open_set)
+                plot_rl_path(path, self.ox, self.oy)
+                if not os.path.exists("./rl_training/planner_png/tt_meta_reaching"):
+                    os.makedirs("./rl_training/planner_png/tt_meta_reaching")
+
+                base_path = "./rl_training/planner_png/tt_meta_reaching/path_simulation"
+                extension = ".png"
+
+                all_files = os.listdir("./rl_training/planner_png/tt_meta_reaching")
+                matched_files = [re.match(r'path_simulation(\d+)\.png', f) for f in all_files]
+                numbers = [int(match.group(1)) for match in matched_files if match]
+
+                if numbers:
+                    save_index = max(numbers) + 1
+                else:
+                    save_index = 1
+                plt.savefig(base_path + str(save_index) + extension)
+                plt.close()
             if find_rl_path:
                 all_control_list = expand_control_list + rl_control_list
-                return path, all_control_list, rl_path
+                return path, all_control_list, rl_path, len(open_set) + len(closed_set) - 1
             elif find_rs_path:
                 all_control_list = expand_control_list + rs_control_list
-                return path, all_control_list, rs_path
+                return path, all_control_list, rs_path, len(open_set) + len(closed_set) - 1
             else:
                 all_control_list = expand_control_list
-                return path, all_control_list, None
+                return path, all_control_list, None, len(open_set) + len(closed_set) - 1
             # if self.heuristic_type == "rl":
             #     if find_rl_path:
             #         all_control_list = expand_control_list + rl_control_list
@@ -6180,11 +6225,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             #     return path, all_control_list, rs_path         
         else:
             if find_rl_path:
-                return self.extract_path(closed_set, fnode, nstart), None, rl_path
+                return self.extract_path(closed_set, fnode, nstart), None, rl_path, len(open_set) + len(closed_set) - 1
             elif find_rs_path:
-                return self.extract_path(closed_set, fnode, nstart), None, rs_path
+                return self.extract_path(closed_set, fnode, nstart), None, rs_path, len(open_set) + len(closed_set) - 1
             else: 
-                return self.extract_path(closed_set, fnode, nstart), None, None
+                return self.extract_path(closed_set, fnode, nstart), None, None, len(open_set) + len(closed_set) - 1
             
             # if self.heuristic_type == "rl":
             #     if find_rl_path: 
