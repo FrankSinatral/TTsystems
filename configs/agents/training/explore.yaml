@@ -1,35 +1,29 @@
-algo_name: 'rl1_lidar_detection_one_hot'
+algo_name: 'diayn'
 seed: 10
-env_name: 'meta-reaching-v0' # remember to switch script
-sac_steps_per_epoch: 50000
-sac_epochs: 100
+env_name: 'planning-v0' # remember to switch script
+sac_steps_per_epoch: 5000
+sac_epochs: 1000
 replay_size: 1000000 # for cluttered, set to 500000
 gamma: 0.95 # need to adjust to 0.99 when using cluttered env
 polyak: 0.95
 lr: 0.001
 alpha: 0.2
+log_alpha_lr: 0.001
 batch_size: 1024
 start_steps: 1000
 update_after: 1000
 update_every: 2000
-save_freq: 10
-num_test_episodes: 100 # for cluttered env set to 10
+save_freq: 1
+num_test_episodes: 100
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
-whether_her: false
 use_auto: true
-whether_astar: true
-astar_ablation: false # true stands for ablation study
-astar_mp_steps: 10
-astar_N_steps: 10
-astar_max_iter: 5
-astar_heuristic_type: 'mix'
-whether_dataset: true
+whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
-
+skill_dim: 50
 
 pretrained: false
 pretrained_itr: 4499999
@@ -37,9 +31,7 @@ pretrained_dir: 'runs_rl/meta-reaching-v0_rl1_lidar_detection_one_hot_three_trai
 
 env_config:
   allow_backward: true
-  distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
-  reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
-  max_episode_steps: 40
+  max_episode_steps: 60
   N_steps: 10
   controlled_vehicle_config:
     max_steer: 0.6
@@ -74,32 +66,30 @@ env_config:
     lidar_detection_one_hot:
       d: 5
   evaluate_mode: false
-  goal_region_bound:
+  generate_goals_config:
     x_min: -30
     x_max: 30
     y_min: -30
     y_max: 30
-  outer_wall_bound:
-    x_min: -50
-    x_max: 50
-    y_min: -50
-    y_max: 50 
+  generate_obstacles_config:
+    x_min: -30
+    x_max: 30
+    y_min: -30
+    y_max: 30
+    number_obstacles: 0
+    max_length: 20
+    min_length: 1.0
+    fixed_number: true
+  
   reward_type: sparse_reward_mod
-  start_region_bound:
-    x_min: 0
-    x_max: 0
-    y_min: 0
-    y_max: 0
-  sucess_goal_reward_sparse: 15
-  sparse_reward_threshold: 0.5
   vehicle_type: three_trailer
-  verbose: false
   jack_knife_penalty: -20
   collision_penalty: -20
+  sparse_reward_threshold: 0.5
+  sucess_goal_reward_sparse: 15
+  verbose: false
   use_rgb: false
-  with_obstacles_info: true #import for model selection
-  observation: lidar_detection_one_hot # ways for perception
   use_gray: false
-  number_obstacles: 1
-  max_length: 20
-  min_length: 1
+  with_obstacles_info: false #import for model selection
+  observation: original # ways for perception
+  

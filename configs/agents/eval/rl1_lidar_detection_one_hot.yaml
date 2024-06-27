@@ -1,6 +1,6 @@
 algo_name: 'rl1_lidar_detection_one_hot'
 seed: 10
-env_name: 'meta-reaching-v0' # remember to switch script
+env_name: 'planning-v0' # remember to switch script
 sac_steps_per_epoch: 50000
 sac_epochs: 100
 replay_size: 1000000 # for cluttered, set to 500000
@@ -21,14 +21,14 @@ activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
 whether_her: false
 use_auto: true
-whether_astar: true
+whether_astar: false
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
-astar_max_iter: 5
+astar_max_iter: 50
 astar_heuristic_type: 'mix'
-whether_dataset: true
-dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
+whether_dataset: false
+dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
 
 
 pretrained: false
@@ -37,8 +37,6 @@ pretrained_dir: 'runs_rl/meta-reaching-v0_rl1_lidar_detection_one_hot_three_trai
 
 env_config:
   allow_backward: true
-  distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
-  reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
   max_episode_steps: 40
   N_steps: 10
   controlled_vehicle_config:
@@ -64,42 +62,28 @@ env_config:
     xi_max: 0.7853981633974483
     safe_d: 0.0
     safe_metric: 3.0
-  perception:
-    one_hot_representation:
-      d: 5
-      number: 8
-    one_hot_representation_enhanced:
-      d: 10
-      number: 8
-    lidar_detection_one_hot:
-      d: 5
-  evaluate_mode: false
-  goal_region_bound:
+  evaluate_mode: true
+  generate_goals_config:
     x_min: -30
     x_max: 30
     y_min: -30
     y_max: 30
-  outer_wall_bound:
-    x_min: -50
-    x_max: 50
-    y_min: -50
-    y_max: 50 
+  generate_obstacles_config:
+    x_min: -30
+    x_max: 30
+    y_min: -30
+    y_max: 30
+    number_obstacles: 0
+    max_length: 20
+    min_length: 1.0
+    fixed_number: true
   reward_type: sparse_reward_mod
-  start_region_bound:
-    x_min: 0
-    x_max: 0
-    y_min: 0
-    y_max: 0
-  sucess_goal_reward_sparse: 15
-  sparse_reward_threshold: 0.5
   vehicle_type: three_trailer
-  verbose: false
   jack_knife_penalty: -20
   collision_penalty: -20
+  sparse_reward_threshold: 0.5
+  sucess_goal_reward_sparse: 15
+  verbose: false
   use_rgb: false
-  with_obstacles_info: true #import for model selection
-  observation: lidar_detection_one_hot # ways for perception
   use_gray: false
-  number_obstacles: 1
-  max_length: 20
-  min_length: 1
+  observation: lidar_detection_one_hot
