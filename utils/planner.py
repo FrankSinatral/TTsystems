@@ -4,8 +4,7 @@ import utils.common as common
 import tractor_trailer_envs as tt_envs
 import matplotlib.pyplot as plt
 import time
-from tractor_trailer_envs import register_tt_envs
-register_tt_envs()
+# tt_envs.register_tt_envs()
 
 def check_finetune_shape(input):
     x, y, yaw, yawt1, yawt2, yawt3 = input
