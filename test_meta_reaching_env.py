@@ -72,7 +72,8 @@ def main():
     #     print("Time: ", t2 - t1)
     for j in range(100):
         start_time = time.time()
-        obs, _ = env.reset(seed=j + 1)
+        obs, info = env.reset(seed=j + 1)
+        # env.unwrapped.real_render()
         # gray_image = env.render_obstacles()
         # rgb_image = env.render_jingyu()
         
