@@ -19,21 +19,15 @@ import pickle
 import rl_agents.sac.core as core
 # Try to add logger
 from rl_agents.utils.logx import EpochLogger
-from rl_agents.query_expert import find_expert_trajectory_meta
 from utils import planner
-import gymnasium as gym
+
 from gymnasium.spaces import Box
 import random
-import tractor_trailer_envs as tt_envs
-import threading
-import multiprocessing
+
 from joblib import Parallel, delayed
 from datetime import datetime
-import matplotlib.pyplot as plt
-from PIL import Image
-import io
-from tractor_trailer_envs import register_tt_envs
-register_tt_envs()
+
+
 def get_current_time_format():
     # get current time
     current_time = datetime.now()
@@ -154,6 +148,7 @@ class SAC_ASTAR_META_NEW:
         """
         Fank: SAC_Astar meta version
         """ 
+        ## get all parameters from the config file
         self.algo = "sac_astar"
         self.config = config
         self.steps_per_epoch = self.config.get("sac_steps_per_epoch", 4000)
@@ -225,6 +220,17 @@ class SAC_ASTAR_META_NEW:
         # Instantiate environment
         self.env, self.test_env = env_fn(self.env_config), env_fn(self.env_config)
         
+        # Use a fixed dataset for training and testing
+        if self.whether_dataset: #TODO: change the update ways
+            # Fank: directly use the data from the datasets
+            with open(self.dataset_path, 'rb') as f:
+                task_list = pickle.load(f)
+            # Update the training data distribution using an existing data file
+            self.env.unwrapped.update_task_list(task_list)
+            self.test_env.unwrapped.update_task_list(task_list) # TODO: set the same as self.env
+        self.observation_type = self.env.unwrapped.observation_type
+        self.whether_attention = self.env.unwrapped.config.get("with_obstacles_info", False)
+        
         if self.vehicle_type == "single_tractor":
             self.number_bounding_box = 1
         elif self.vehicle_type == "one_trailer":
@@ -233,26 +239,16 @@ class SAC_ASTAR_META_NEW:
             self.number_bounding_box = 3
         else:
             self.number_bounding_box = 4
-        if self.whether_dataset: #TODO: change the update ways
-            # Fank: directly use the data from the datasets
-            with open(self.dataset_path, 'rb') as f:
-                task_list = pickle.load(f)
-            # Update the training data distribution using an existing data file
-            self.env.unwrapped.update_task_list(task_list)
-            self.test_env.unwrapped.update_task_list(task_list) # TODO: set the same as self.env
+        
         self.state_dim = self.env.observation_space['observation'].shape[0]
         if self.env.unwrapped.observation_type == 'original':
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float32)
-        elif self.env.unwrapped.observation_type == "lidar_detection" or self.env.unwrapped.observation_type == "one_hot_representation":
-            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + config["perception"]["one_hot_representation"]["number"]*self.number_bounding_box,), np.float32)
         elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 9*self.number_bounding_box,), np.float32)
         elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple":
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 27*self.number_bounding_box,), np.float32)
-        elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
-            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 98,), np.float32)
         else:
-            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 4,), np.float32)
+            self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 40,), np.float32)
         self.obs_dim = self.box.shape
         self.act_dim = self.env.action_space.shape[0]
         # Action limit for clamping: critically, assumes all dimensions share the same bound!
@@ -262,7 +258,7 @@ class SAC_ASTAR_META_NEW:
         self.test_env.action_space.seed(self.seed)
         
         # Create actor-critic module and target networks
-        if self.env.unwrapped.config["with_obstacles_info"]:
+        if self.whether_attention:
             actor_critic = core.AttentionActorCritic # change our model for testing
             self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
         else:
@@ -273,10 +269,9 @@ class SAC_ASTAR_META_NEW:
         # set up summary writer
         self.exp_name = logger_kwargs['exp_name']
         
-        self.save_model_path = self.log_dir  + self.exp_name
-        self.writer = SummaryWriter(log_dir=self.save_model_path)
-        
-        
+        self.save_model_path = self.log_dir + self.exp_name
+        if self.use_logger:
+            self.writer = SummaryWriter(log_dir=self.save_model_path)
         
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.ac_targ.parameters():
@@ -286,7 +281,7 @@ class SAC_ASTAR_META_NEW:
         self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
 
         # Experience buffer
-        if self.env.unwrapped.config["with_obstacles_info"]:
+        if self.whether_attention:
             self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=10, size=self.replay_size, device=self.device)
         else:
             self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
@@ -341,11 +336,11 @@ class SAC_ASTAR_META_NEW:
 
     # Set up function for computing SAC Q-losses
     def compute_loss_q(self, data):
-        if self.env.unwrapped.config["with_obstacles_info"]:
+        if self.whether_attention:
             obstacle = data["obstacles"]
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
         
-        if self.env.unwrapped.config["with_obstacles_info"]:
+        if self.whether_attention:
             q1 = self.ac.q1(o, obstacle, a)
             q2 = self.ac.q2(o, obstacle, a)
         else:
@@ -356,7 +351,7 @@ class SAC_ASTAR_META_NEW:
         with torch.no_grad():
             # Target actions come from *current* policy
             # Target Q-values
-            if self.env.unwrapped.config["with_obstacles_info"]:
+            if self.whether_attention:
                 a2, logp_a2 = self.ac.pi(o2, obstacle)
                 q1_pi_targ = self.ac_targ.q1(o2, obstacle, a2)
                 q2_pi_targ = self.ac_targ.q2(o2, obstacle, a2)
@@ -382,7 +377,7 @@ class SAC_ASTAR_META_NEW:
     # Set up function for computing SAC pi loss
     def compute_loss_pi(self, data):
         o = data['obs']
-        if self.env.unwrapped.config["with_obstacles_info"]:
+        if self.whether_attention:
             obs = data["obstacles"]
             pi, logp_pi = self.ac.pi(o, obs)
             q1_pi = self.ac.q1(o, obs, pi)
@@ -428,7 +423,8 @@ class SAC_ASTAR_META_NEW:
 
         # Here record Critic Loss and q_info
         # self.logger.store(LossQ=loss_q.item(), **q_info)
-        self.writer.add_scalar('train/critic_loss', loss_q.item(), global_step=global_step)
+        if self.use_logger:
+            self.writer.add_scalar('train/critic_loss', loss_q.item(), global_step=global_step)
 
         # Freeze Q-networks so you don't waste computational effort 
         # computing gradients for them during the policy learning step.
@@ -444,7 +440,7 @@ class SAC_ASTAR_META_NEW:
         # Perform Automatically Tuning Alpha
         alpha, alpha_loss, average_entropy = self.compute_loss_alpha(logp_pi)
 
-        if self.use_automatic_entropy_tuning:
+        if self.use_automatic_entropy_tuning and self.use_logger:
             self.writer.add_scalar("train/alpha", alpha.item(), global_step=global_step)
             self.writer.add_scalar("train/alpha_loss", alpha_loss.item(), global_step=global_step)
             self.writer.add_scalar("train/average_entropy", average_entropy.item(), global_step=global_step)
@@ -455,7 +451,8 @@ class SAC_ASTAR_META_NEW:
 
         # Here record Actor Loss and pi_info
         # self.logger.store(LossPi=loss_pi.item(), **pi_info)
-        self.writer.add_scalar('train/actor_loss', loss_pi.item(), global_step=global_step)
+        if self.use_logger:
+            self.writer.add_scalar('train/actor_loss', loss_pi.item(), global_step=global_step)
 
         # Finally, update target networks by polyak averaging.
         with torch.no_grad():
@@ -485,6 +482,19 @@ class SAC_ASTAR_META_NEW:
         else:
             filled_obstacles = np.zeros((self.replay_buffer.obstacle_dim + 1, self.replay_buffer.obstacle_num), dtype=np.float32)
         return filled_obstacles
+    
+    def process_obstacles_properties_to_array(self, input_list):
+        """process for mlp with obstacles properties"""
+        array_length = 40
+        result_array = np.zeros(array_length, dtype=np.float32)
+        
+        # 将input_list中的元素顺次填入result_array中
+        for i, (x, y, l, d) in enumerate(input_list):
+            if i >= 10:
+                break
+            result_array[i*4:i*4+4] = [x, y, l, d]
+        
+        return result_array
 
     def get_action(self, o, info=None, deterministic=False, rgb_image=None):
         if info is None:
@@ -507,32 +517,20 @@ class SAC_ASTAR_META_NEW:
         for j in range(self.num_test_episodes):
             o, info = self.test_env.reset(seed=j)
             terminated, truncated, ep_ret, ep_len = False, False, 0, 0
-            observation_type = self.env.unwrapped.observation_type
+            
             while not(terminated or truncated):
                 # Take deterministic actions at test time
                 obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
-                if observation_type != "original":
-                    obs_list.append(o[observation_type])
+                if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                    obs_list.append(o[self.observation_type])
+                if self.observation_type == "original_with_obstacles_info":
+                    obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
                 action_input = np.concatenate(obs_list)
-                if self.env.unwrapped.config.get("with_obstacles_info", False):
+                if self.whether_attention:
                     action = self.get_action(action_input, info, deterministic=True)
                 else:
                     action = self.get_action(action_input, deterministic=True)
                 o, r, terminated, truncated, info = self.test_env.step(action)
-                # if self.env.unwrapped.observation_type == "original" :
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), deterministic=True))
-                # elif self.env.unwrapped.observation_type == "lidar_detection":
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), deterministic=True))
-                # elif self.env.unwrapped.observation_type == "one_hot_representation":
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), deterministic=True))
-                # elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), deterministic=True))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and not self.env.unwrapped.config["with_obstacles_info"]:
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), deterministic=True))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and self.env.unwrapped.config["with_obstacles_info"]:
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), info, deterministic=True))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple" and not self.env.unwrapped.config["with_obstacles_info"]:
-                #     o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), deterministic=True))
                 ep_ret += r
                 ep_len += 1
             average_ep_ret += ep_ret
@@ -543,31 +541,29 @@ class SAC_ASTAR_META_NEW:
                 jack_knife_rate += 1
             if info['crashed']:
                 crash_rate += 1
-            self.logger.store(ep_rew_mean=ep_ret, ep_len_mean=ep_len)
+            if self.use_logger:
+                self.logger.store(ep_rew_mean=ep_ret, ep_len_mean=ep_len)
         jack_knife_rate /= self.num_test_episodes
         success_rate /= self.num_test_episodes  
         crash_rate /= self.num_test_episodes 
         average_ep_ret /= self.num_test_episodes
         average_ep_len /= self.num_test_episodes
-        self.logger.store(success_rate=success_rate, jack_knife_rate=jack_knife_rate, crash_rate=crash_rate)
-        self.logger.store(total_timesteps=global_steps)
-        self.writer.add_scalar('evaluate/ep_rew_mean', average_ep_ret, global_step=global_steps) 
-        self.writer.add_scalar('evaluate/ep_len_mean', average_ep_len, global_step=global_steps)   
-        self.writer.add_scalar('evaluate/success_rate', success_rate, global_step=global_steps)
-        self.writer.add_scalar('evaluate/jack_knife_rate', jack_knife_rate, global_step=global_steps)
-        self.writer.add_scalar('evaluate/crash_rate', crash_rate, global_step=global_steps)
-        self.logger.log_tabular('ep_rew_mean', with_min_and_max=False, average_only=True)
-        self.logger.log_tabular('ep_len_mean', with_min_and_max=False, average_only=True)
-        self.logger.log_tabular('success_rate', with_min_and_max=False, average_only=True)
-        self.logger.log_tabular('jack_knife_rate', with_min_and_max=False, average_only=True)
-        self.logger.log_tabular('crash_rate', with_min_and_max=False, average_only=True)
-        self.logger.log_tabular('total_timesteps', with_min_and_max=False, average_only=True)
-        # try:
-        #     self.logger.log_tabular('LossQ')
-        #     self.logger.log_tabular('LossPi')
-        # except:
-        #     pass
-        self.logger.dump_tabular()
+        if self.use_logger:
+            self.logger.store(success_rate=success_rate, jack_knife_rate=jack_knife_rate, crash_rate=crash_rate)
+            self.logger.store(total_timesteps=global_steps)
+            self.writer.add_scalar('evaluate/ep_rew_mean', average_ep_ret, global_step=global_steps) 
+            self.writer.add_scalar('evaluate/ep_len_mean', average_ep_len, global_step=global_steps)   
+            self.writer.add_scalar('evaluate/success_rate', success_rate, global_step=global_steps)
+            self.writer.add_scalar('evaluate/jack_knife_rate', jack_knife_rate, global_step=global_steps)
+            self.writer.add_scalar('evaluate/crash_rate', crash_rate, global_step=global_steps)
+            self.logger.log_tabular('ep_rew_mean', with_min_and_max=False, average_only=True)
+            self.logger.log_tabular('ep_len_mean', with_min_and_max=False, average_only=True)
+            self.logger.log_tabular('success_rate', with_min_and_max=False, average_only=True)
+            self.logger.log_tabular('jack_knife_rate', with_min_and_max=False, average_only=True)
+            self.logger.log_tabular('crash_rate', with_min_and_max=False, average_only=True)
+            self.logger.log_tabular('total_timesteps', with_min_and_max=False, average_only=True)
+       
+            self.logger.dump_tabular()
         
     
     def add_results_to_buffer(self, task_list, result_list):
@@ -651,7 +647,11 @@ class SAC_ASTAR_META_NEW:
         # ep_len: calculate the timesteps of an episode
         # reset this value every time we use run
         self.finish_episode_number = 0
+        feasible_seed_number = 0
         o, info = self.env.reset(seed=self.seed)
+        while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+            feasible_seed_number += 1
+            o, info = self.env.reset(seed=(self.seed + feasible_seed_number))  
         episode_start_time = time.time()
         if self.whether_astar and not self.astar_ablation:
             self.add_astar_number = 0
@@ -672,39 +672,16 @@ class SAC_ASTAR_META_NEW:
             # from a uniform distribution for better exploration. Afterwards, 
             # use the learned policy. 
             if t > self.start_steps:
-                # TODO
-                observation_type = self.env.unwrapped.observation_type
-                with_obstacles_info = self.env.unwrapped.config.get("with_obstacles_info", False)
                 obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
-                if observation_type != "original":
-                    obs_list.append(o[observation_type])
+                if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                    obs_list.append(o[self.observation_type])
+                if self.observation_type == "original_with_obstacles_info":
+                    obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
                 action_input = np.concatenate(obs_list)
-                if with_obstacles_info:
+                if self.whether_attention:
                     a = self.get_action(action_input, info)
                 else:
-                    a = self.get_action(action_input)
-                # if self.env.unwrapped.observation_type == "original" and not self.env.unwrapped.config["with_obstacles_info"]:
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]))
-                # elif self.env.unwrapped.observation_type == "original" and self.env.unwrapped.config["with_obstacles_info"]:
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), info)
-                # # not working for lidar_detection and one_hot_representation
-                # elif self.env.unwrapped.observation_type == "lidar_detection":
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]))
-                # elif self.env.unwrapped.observation_type == "one_hot_representation":
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]))
-                # elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and not self.env.unwrapped.config["with_obstacles_info"]:
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and self.env.unwrapped.config["with_obstacles_info"]:
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), info)
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple" and not self.env.unwrapped.config["with_obstacles_info"]:
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple" and self.env.unwrapped.config["with_obstacles_info"]:
-                #     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), info)
-                #     # a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), info)
-                
-                # # a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]))
+                    a = self.get_action(action_input) 
             else:
                 a = self.env.action_space.sample()
 
@@ -721,64 +698,35 @@ class SAC_ASTAR_META_NEW:
             d = terminated and (not truncated)
 
             # Store experience to replay buffer
-            observation_type = self.env.unwrapped.observation_type
-            with_obstacles_info = self.env.unwrapped.config.get("with_obstacles_info", False)
             obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
             next_obs_list = [o2['observation'], o2['achieved_goal'], o2['desired_goal']]
-            if observation_type != "original":
-                obs_list.append(o[observation_type])
-                next_obs_list.append(o2[observation_type])
+            if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                obs_list.append(o[self.observation_type])
+                next_obs_list.append(o2[self.observation_type])
+            if self.observation_type == "original_with_obstacles_info":
+                obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
+                next_obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
             obs_input = np.concatenate(obs_list)
             next_obs_input = np.concatenate(next_obs_list)
-            if with_obstacles_info:
+            if self.whether_attention:
                 self.replay_buffer.store(obs_input, a, r, next_obs_input, d, info.get("obstacles_properties"))
             else:
                 self.replay_buffer.store(obs_input, a, r, next_obs_input, d)
             
-            # if self.env.unwrapped.observation_type == "original" and not self.env.unwrapped.config["with_obstacles_info"]:
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d)
-            # elif self.env.unwrapped.observation_type == "original" and self.env.unwrapped.config["with_obstacles_info"]:
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info["obstacles_properties"])
-            # elif self.env.unwrapped.observation_type == "lidar_detection":
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection']]), d)
-            # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and not self.env.unwrapped.config["with_obstacles_info"]:
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot']]), d)
-            # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and self.env.unwrapped.config["with_obstacles_info"]:
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot']]), d, info["obstacles_properties"])
-            # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple" and not self.env.unwrapped.config["with_obstacles_info"]:
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot_triple']]), d)
-            # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple" and self.env.unwrapped.config["with_obstacles_info"]:
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot_triple']]), d, info["obstacles_properties"])
-            # elif self.env.unwrapped.observation_type == "one_hot_representation":
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation']]), d)
-            # elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
-            #     self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation_enhanced']]), d)
             
             if self.whether_her:
                 
-                observation_type = self.env.unwrapped.observation_type
                 obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
                 next_obs_list = [o2['observation'], o2['achieved_goal'], o2['desired_goal']]
-                if observation_type != "original":
-                    obs_list.append(o[observation_type])
-                    next_obs_list.append(o2[observation_type])
-                    
+                if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                    obs_list.append(o[self.observation_type])
+                    next_obs_list.append(o2[self.observation_type])
+                if self.observation_type == "original_with_obstacles_info":
+                    obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
+                    next_obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))   
                 obs_input = np.concatenate(obs_list)
                 next_obs_input = np.concatenate(next_obs_list)
                 trajectory_buffer.append((obs_input, a, r, next_obs_input, d, info))  
-                # # TODO: We try to use the HER to improve the performance
-                # if self.env.unwrapped.observation_type == "original":
-                #     trajectory_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info))
-                # elif self.env.unwrapped.observation_type == "lidar_detection":
-                #     trajectory_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection']]), d, info))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
-                #     trajectory_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot']]), d, info))
-                # elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple":
-                #     trajectory_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot_triple']]), d, info))
-                # elif self.env.unwrapped.observation_type == "one_hot_representation":
-                #     trajectory_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation']]), d, info))
-                # elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
-                #     trajectory_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation_enhanced']]), d, info))
             # Super critical, easy to overlook step: make sure to update 
             # most recent observation!
             o = o2
@@ -812,12 +760,14 @@ class SAC_ASTAR_META_NEW:
                         for _ in range(20):
                             o, info = self.test_env.reset(seed=(self.big_number + self.count_unrelated_task)) # may need to change to test_env
                             self.count_unrelated_task += 1
-                            encounter_task_list.append((o, info["obstacles_info"], info["obstacles_properties"]))
-                        astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.vehicle_type) for o in encounter_task_list)
-                        
-                        # astar_results = [find_expert_trajectory(o, self.vehicle_type) for o in encounter_start_list]
+                            encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
+                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.env.unwrapped.observation_type) for task in encounter_task_list)
                         self.add_results_to_buffer(astar_results)
-                o, info = self.env.reset(seed=(self.seed + t))
+                feasible_seed_number = 0       
+                o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
+                while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+                    feasible_seed_number += 1
+                    o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
                 if self.whether_astar and not self.astar_ablation:
                     encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
                     

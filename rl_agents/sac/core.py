@@ -155,7 +155,76 @@ class SquashedGaussianCNNActor(nn.Module):
         return pi_action, logp_pi
     
 
+class SquashedGaussianSetActor(nn.Module):
 
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.perception_net = mlp([2*state_dim + goal_dim + perception_dim] + list(hidden_sizes), activation, activation)
+        self.obstacle_net = mlp([2*state_dim + goal_dim + obstacle_dim] + list(hidden_sizes), activation, activation)
+        self.mu_layer = nn.Linear(2*hidden_sizes[-1], act_dim)
+        self.log_std_layer = nn.Linear(2*hidden_sizes[-1], act_dim)
+        self.act_limit = act_limit
+
+    def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0) # [1, obs_dim]
+            obstacles = obstacles.unsqueeze(0)
+        else:
+            squeeze = False
+        perception_out = self.perception_net(obs)
+        
+        obs_vehicle = obs[:, :(2*self.state_dim + self.goal_dim)] # (batch_size, (2*state_dim + goal_dim))
+        obs_vehicle = obs_vehicle.unsqueeze(2).expand(-1, -1, obstacles.size(2)) #(batch_size, (2*state_dim + goal_dim), obstacles_num)
+        
+        
+        obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
+        obs_with_obstacles = torch.cat([obs_vehicle, obstacles_data], dim=1) # (batch_size, (2*state_dim + goal_dim + obstacle_dim), obstacles_num)
+        obs_with_obstacles = obs_with_obstacles.permute(0,2,1) # (batch_size, obstacles_num, (2*state_dim + goal_dim + obstacle_dim)
+        obs_with_obstacles = obs_with_obstacles.contiguous().view(-1, 2*self.state_dim + self.goal_dim + self.obstacle_dim) # (batch_size*obstacles_num, (2*state_dim + goal_dim + obstacle_dim))
+        # obs_with_obstacles = obs_with_obstacles.view(-1, 2*self.state_dim + self.goal_dim + self.obstacle_dim) # （batch_size*obstacles_num, (2*state_dim + goal_dim + obstacle_dim))
+
+        obstacle_outs = self.obstacle_net(obs_with_obstacles) # (batch_size*obstacles_num, hidden_sizes[-1])
+        obstacle_outs = obstacle_outs.view(obs.size(0), obstacles.size(2), -1).permute(0, 2, 1) # (batch_size, hidden_sizes[-1], self.obstacles_num)
+
+        
+        obstacle_masks = obstacles[:, -1, :].unsqueeze(1) #(batch_size, 1, self.obstacle_num)
+        
+        
+        weighted_obstacle_outs = obstacle_outs * obstacle_masks
+        mean_obstacle_out = weighted_obstacle_outs.sum(dim=2) # (batch_size, hidden_sizes[-1])
+        
+        combined_out = torch.cat([perception_out, mean_obstacle_out], dim=-1)
+        mu = self.mu_layer(combined_out)
+        log_std = self.log_std_layer(combined_out)
+        
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        if squeeze:
+            mu = mu.squeeze()
+            std = std.squeeze()
+        # Pre-squash distribution and sample
+        pi_distribution = Normal(mu, std)
+        if deterministic:
+            pi_action = mu
+        else:
+            pi_action = pi_distribution.rsample()
+
+        if with_logprob:
+            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+            logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+        else:
+            logp_pi = None
+
+        pi_action = torch.tanh(pi_action)
+        pi_action = self.act_limit * pi_action
+
+        return pi_action, logp_pi
 
 class MLPQFunction(nn.Module):
 
@@ -180,6 +249,173 @@ class CNNQFunction(nn.Module):
         q = self.q(torch.cat([obs, cnn_net_out, act], dim=-1))
         return torch.squeeze(q, -1) # Critical to ensure q has right shape.
 
+class SetQFunction(nn.Module):
+
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        # Network for processing each obstacle
+        self.obstacle_net = mlp([2*state_dim + goal_dim + obstacle_dim] + list(hidden_sizes), activation, activation)
+        # Q-value output layer
+        self.q_layer = mlp([2*state_dim + goal_dim + perception_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.hidden_size = hidden_sizes[-1]
+
+    def forward(self, obs, obstacles, act):
+        
+        obs_vehicle = obs[:, :(2*self.state_dim + self.goal_dim)] # (batch_size, (2*state_dim + goal_dim))
+        
+        obs_vehicle = obs_vehicle.unsqueeze(2).expand(-1, -1, obstacles.size(2)) #(batch_size, (2*state_dim + goal_dim), obstacles_num)
+
+        obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
+        obs_with_obstacles = torch.cat([obs_vehicle, obstacles_data], dim=1) # (batch_size, (2*state_dim + goal_dim + obstacle_dim), obstacles_num)
+        obs_with_obstacles = obs_with_obstacles.permute(0,2,1) # (batch_size, obstacles_num, (2*state_dim + goal_dim + obstacle_dim)
+        obs_with_obstacles = obs_with_obstacles.contiguous().view(-1, 2*self.state_dim + self.goal_dim + self.obstacle_dim) # (batch_size*obstacles_num, (2*state_dim + goal_dim + obstacle_dim))
+        # obs_with_obstacles = obs_with_obstacles.view(-1, 2*self.state_dim + self.goal_dim + self.obstacle_dim) # （batch_size*obstacles_num, (2*state_dim + goal_dim + obstacle_dim))
+
+        obstacle_outs = self.obstacle_net(obs_with_obstacles) # (batch_size*obstacles_num, hidden_sizes[-1])
+        obstacle_outs = obstacle_outs.view(obs.size(0), obstacles.size(2), -1).permute(0, 2, 1) # (batch_size, hidden_sizes[-1], self.obstacles_num)
+
+        
+        obstacle_masks = obstacles[:, -1, :].unsqueeze(1) #(batch_size, 1, self.obstacle_num)
+        
+        
+        weighted_obstacle_outs = obstacle_outs * obstacle_masks
+        mean_obstacle_out = weighted_obstacle_outs.sum(dim=2) # (batch_size, hidden_sizes[-1])
+        combined_out = torch.cat([obs, mean_obstacle_out, act], dim=-1)
+        q = self.q_layer(combined_out)
+        return torch.squeeze(q, -1)  # Ensure q has the right shape
+    
+class SquashedGaussianAttentionActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit):
+        super().__init__()
+        self.state_dim = state_dim # this refer to the state dimension
+        self.goal_dim = goal_dim # this refer to the goal dimension(usually the same as state_dim)
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+        
+        self.goal_reaching_net = mlp([2*state_dim + goal_dim] + list(hidden_sizes), activation, activation)
+        self.q_proj = nn.Linear(2*state_dim + goal_dim, self.latent_dim)
+        self.k_proj = nn.Linear(obstacle_dim, self.latent_dim)
+        self.v_proj = nn.Linear(obstacle_dim, self.latent_dim)
+        self.mu_layer = nn.Linear(self.latent_dim, act_dim)
+        self.log_std_layer = nn.Linear(self.latent_dim, act_dim)
+        self.act_limit = act_limit
+        
+    def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
+        """the input
+        - obs: (batch_size, (2*state_dim + goal_dim)) or (2*state_dim + goal_dim)
+        - obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        """
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+        else:
+            squeeze = False
+        # Extract the relevant part of obs
+        obs_vehicle = obs[:, :(2*self.state_dim + self.goal_dim)]  # (batch_size, (2*state_dim + goal_dim)) #TODO
+        
+        goal_reaching_out = self.goal_reaching_net(obs_vehicle)  
+        
+        # Project to Query, Key & Value
+        query = self.q_proj(obs_vehicle).unsqueeze(1)  # (batch_size, 1, latent_dim)
+        obstacles_data = obstacles[:, :self.obstacle_dim, :]  # (batch_size, obstacle_dim, obstacles_num)
+        key = self.k_proj(obstacles_data.permute(0, 2, 1))  # (batch_size, obstacles_num, latent_dim)
+        value = self.v_proj(obstacles_data.permute(0, 2, 1))  # (batch_size, obstacles_num, latent_dim)
+        
+        # Masking
+        mask = obstacles[:, -1, :].unsqueeze(1)  # (batch_size, 1, obstacles_num)
+        
+        dk = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1))  # (batch_size, 1, obstacles_num) for each obstacle, there is a score
+        scores = scores / torch.sqrt(torch.tensor(dk, dtype=torch.float32))
+        
+        # Apply mask by setting masked positions to a very large negative number
+        scores = scores.masked_fill(mask == 0, -1e9)
+        attn_weights = F.softmax(scores, dim=-1)  # (batch_size, 1, obstacles_num)
+        attn_output = torch.matmul(attn_weights, value)  # (batch_size, 1, latent_dim)
+        attn_output = attn_output.squeeze(1)  # [batch_size, latent_dim]
+        combined_out = goal_reaching_out + attn_output  # [batch_size, latent_dim]
+        
+        mu = self.mu_layer(combined_out)
+        log_std = self.log_std_layer(combined_out)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+
+        if squeeze:
+            mu = mu.squeeze()
+            std = std.squeeze()
+
+        # Pre-squash distribution and sample
+        pi_distribution = Normal(mu, std)
+        if deterministic:
+            pi_action = mu
+        else:
+            pi_action = pi_distribution.rsample()
+
+        if with_logprob:
+            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+            logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
+        else:
+            logp_pi = None
+
+        pi_action = torch.tanh(pi_action)
+        pi_action = self.act_limit * pi_action
+
+        return pi_action, logp_pi
+   
+class AttentionQFunction(nn.Module):
+
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+        # Networks for generating Query, Key, and Value
+        self.q_proj = nn.Linear(2*state_dim + goal_dim, self.latent_dim)
+        self.k_proj = nn.Linear(obstacle_dim, self.latent_dim)
+        self.v_proj = nn.Linear(obstacle_dim, self.latent_dim)
+        
+        # Q-value output layer
+        self.q_layer = mlp([2*state_dim + goal_dim +  hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.hidden_size = hidden_sizes[-1]
+
+    def forward(self, obs, obstacles, act):
+        # TODO: we cat the output, whether this will work
+        # Note that data will always have the batch_size dim
+        
+        # Extract the relevant part of obs
+        obs_vehicle = obs[:, :(2*self.state_dim + self.goal_dim)] # (batch_size, (2*state_dim + goal_dim))
+        obstacles_data = obstacles[:, :self.obstacle_dim, :]  # [batch_size, obstacle_dim, obstacles_num]
+        
+        # Generate Query, Key, and Value
+        query = self.q_proj(obs_vehicle).unsqueeze(1)  # (batch_size, 1, latent_dim)
+        key = self.k_proj(obstacles_data.permute(0, 2, 1))  # (batch_size, obstacles_num, latent_dim)
+        value = self.v_proj(obstacles_data.permute(0, 2, 1))  # (batch_size, obstacles_num, latent_dim)
+        mask = obstacles[:, -1, :].unsqueeze(1)  # (batch_size, 1, obstacles_num)
+        
+        # Calculate attention weights
+        dk = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1))  # [batch_size, 1, obstacles_num]
+        scores = scores / torch.sqrt(torch.tensor(dk, dtype=torch.float32))
+        scores = scores.masked_fill(mask == 0, -1e9)  # Masking
+        attn_weights = F.softmax(scores, dim=-1)  # [batch_size, 1, obstacles_num]
+        attn_output = torch.matmul(attn_weights, value)  # [batch_size, 1, latent_dim]
+        attn_output = attn_output.squeeze(1)  # [batch_size, latent_dim]
+       # Combine all features and compute Q-value
+        combined_out = torch.cat([obs_vehicle, attn_output, act], dim=-1)
+        q = self.q_layer(combined_out)
+        return torch.squeeze(q, -1)  # Ensure q has the right shape
+
 class MLPActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
@@ -201,7 +437,190 @@ class MLPActorCritic(nn.Module):
             # I have to change here for GPU
             return a.cpu().numpy()
         
+class AttentionActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+                 activation=nn.ReLU):
+        super().__init__()
+
+        obs_dim = observation_space.shape[0]
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+        state_dim = 6
+        goal_dim = 6
+        perception_dim = obs_dim - (2*state_dim + goal_dim)
+        obstacle_dim = 4 # currently this is fixed
+        obstacle_num = 10
+
+        # build policy and value functions
+        self.pi = SquashedGaussianAttentionActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+        self.q2 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.pi(obs, obstacles, deterministic, False)
+            # I have to change here for GPU
+            return a.cpu().numpy()
+
+class SetActorCritic(nn.Module):
+
+    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+                 activation=nn.ReLU):
+        super().__init__()
+        obs_dim = observation_space.shape[0]
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+        state_dim = 6
+        goal_dim = 6
+        perception_dim = obs_dim - (2*state_dim + goal_dim)
+        obstacle_dim = 4
+        obstacle_num = 10
+
+        # build policy and value functions
+        self.pi = SquashedGaussianSetActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = SetQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+        self.q2 = SetQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.pi(obs, obstacles, deterministic, False)
+            # I have to change here for GPU
+            return a.cpu().numpy()      
         
+class OnlySetActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_sizes=(256,256), activation=nn.ReLU):
+        super().__init__()
+        obs_dim = observation_space.shape[0]
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+        state_dim = 6
+        goal_dim = 6
+        perception_dim = obs_dim - (2*state_dim + goal_dim)
+        obstacle_dim = 4
+        obstacle_num = 10
+
+        # build policy and value functions
+        self.pi = SquashedGaussianOnlySetActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = OnlySetQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation)
+        self.q2 = OnlySetQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation)
+
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.pi(obs, obstacles, deterministic, False)
+            return a.cpu().numpy()
+
+class SquashedGaussianOnlySetActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit):
+        super().__init__()
+        """we take the perception out"""
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.obstacle_net = mlp([2*state_dim + goal_dim + obstacle_dim] + list(hidden_sizes), activation, activation)
+        self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
+        self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
+        self.act_limit = act_limit
+
+    def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+        else:
+            squeeze = False
+        
+        obs_vehicle = obs[:, :(2*self.state_dim + self.goal_dim)] # (batch_size, (2*state_dim + goal_dim))
+        obs_vehicle = obs_vehicle.unsqueeze(2).expand(-1, -1, obstacles.size(2)) #(batch_size, (2*state_dim + goal_dim), obstacles_num)
+        
+        
+        obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
+        obs_with_obstacles = torch.cat([obs_vehicle, obstacles_data], dim=1) # (batch_size, (2*state_dim + goal_dim + obstacle_dim), obstacles_num)
+        obs_with_obstacles = obs_with_obstacles.permute(0,2,1) # (batch_size, obstacles_num, (2*state_dim + goal_dim + obstacle_dim)
+        obs_with_obstacles = obs_with_obstacles.contiguous().view(-1, 2*self.state_dim + self.goal_dim + self.obstacle_dim) # (batch_size*obstacles_num, (2*state_dim + goal_dim + obstacle_dim))
+        
+        obstacle_outs = self.obstacle_net(obs_with_obstacles) # (batch_size*obstacles_num, hidden_sizes[-1])
+        obstacle_outs = obstacle_outs.view(obs.size(0), obstacles.size(2), -1).permute(0, 2, 1) # (batch_size, hidden_sizes[-1], self.obstacles_num)
+
+        
+        obstacle_masks = obstacles[:, -1, :].unsqueeze(1) #(batch_size, 1, self.obstacle_num)
+        
+        
+        weighted_obstacle_outs = obstacle_outs * obstacle_masks
+        mean_obstacle_out = weighted_obstacle_outs.sum(dim=2) # (batch_size, hidden_sizes[-1])
+        
+        mu = self.mu_layer(mean_obstacle_out)
+        log_std = self.log_std_layer(mean_obstacle_out)
+        
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        if squeeze:
+            mu = mu.squeeze()
+            std = std.squeeze()
+        # Pre-squash distribution and sample
+        pi_distribution = Normal(mu, std)
+        if deterministic:
+            pi_action = mu
+        else:
+            pi_action = pi_distribution.rsample()
+
+        if with_logprob:
+            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+            logp_pi -= (2*(np.log(2) - pi_action - F.softplus(-2*pi_action))).sum(axis=1)
+        else:
+            logp_pi = None
+
+        pi_action = torch.tanh(pi_action)
+        pi_action = self.act_limit * pi_action
+
+        return pi_action, logp_pi
+
+class OnlySetQFunction(nn.Module):
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.obstacle_net = mlp([2*state_dim + goal_dim + obstacle_dim] + list(hidden_sizes), activation, activation)
+        self.q_layer = mlp([2*state_dim + goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.hidden_size = hidden_sizes[-1]
+
+    def forward(self, obs, obstacles, act):
+        
+        obs_vehicle = obs[:, :(2*self.state_dim + self.goal_dim)] # (batch_size, (2*state_dim + goal_dim))
+        
+        obs_vehicle = obs_vehicle.unsqueeze(2).expand(-1, -1, obstacles.size(2)) #(batch_size, (2*state_dim + goal_dim), obstacles_num)
+
+        obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
+        obs_with_obstacles = torch.cat([obs_vehicle, obstacles_data], dim=1) # (batch_size, (2*state_dim + goal_dim + obstacle_dim), obstacles_num)
+        obs_with_obstacles = obs_with_obstacles.permute(0,2,1) # (batch_size, obstacles_num, (2*state_dim + goal_dim + obstacle_dim)
+        obs_with_obstacles = obs_with_obstacles.contiguous().view(-1, 2*self.state_dim + self.goal_dim + self.obstacle_dim) # (batch_size*obstacles_num, (2*state_dim + goal_dim + obstacle_dim))
+
+        obstacle_outs = self.obstacle_net(obs_with_obstacles) # (batch_size*obstacles_num, hidden_sizes[-1])
+        obstacle_outs = obstacle_outs.view(obs.size(0), obstacles.size(2), -1).permute(0, 2, 1) # (batch_size, hidden_sizes[-1], self.obstacles_num)
+
+        
+        obstacle_masks = obstacles[:, -1, :].unsqueeze(1) #(batch_size, 1, self.obstacle_num)
+        
+        
+        weighted_obstacle_outs = obstacle_outs * obstacle_masks
+        mean_obstacle_out = weighted_obstacle_outs.sum(dim=2) # (batch_size, hidden_sizes[-1])
+        combined_out = torch.cat([obs[:, :(2*self.state_dim + self.goal_dim)], mean_obstacle_out, act], dim=-1)
+        q = self.q_layer(combined_out)
+        return torch.squeeze(q, -1)  # Ensure q has the right shape
+    
+
+    
+ 
 class CNNActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),

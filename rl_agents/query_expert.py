@@ -15,11 +15,13 @@ from multiprocessing import Pool
 import logging
 import random
 
-def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heuristic_type="traditional", observation_type="original"):
+def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heuristic_type="traditional", observation_type="original", whether_obstacles_info=False):
     """only for 3-tt"""
     goal = o[0]["desired_goal"]
     input = o[0]["observation"]
     obstacles_info = o[1]
+    if whether_obstacles_info:
+        obstacles_properties = o[2]
     # if len(obstacles_info) == 0:
     #     obstacles_info = None  
     config = {
@@ -59,6 +61,13 @@ def find_expert_trajectory_meta(o, map, mp_step=10, N_steps=10, max_iter=50, heu
     }
     
     pack_transition_list = query_hybrid_astar_three_trailer_meta(input, goal, map, obstacles_info, config, observation_type)
+    if whether_obstacles_info:
+        if pack_transition_list is None:
+            pass
+        else:
+            for transition in pack_transition_list:
+                transition.append(obstacles_properties)
+        
     return pack_transition_list
 
 def find_expert_trajectory(o, vehicle_type):

@@ -80,6 +80,59 @@ class ReplayBuffer:
                      done=self.done_buf[idxs])
         return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) for k,v in batch.items()}
 
+class ReplayBuffer_With_Obstacles:
+    """
+    A simple FIFO experience replay buffer for SAC agents.
+    """
+
+    def __init__(self, obs_dim, act_dim, obstacle_dim, obstacle_num, size, device):
+        self.obs_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
+        self.obs2_buf = np.zeros(core.combined_shape(size, obs_dim), dtype=np.float32)
+        self.act_buf = np.zeros(core.combined_shape(size, act_dim), dtype=np.float32)
+        self.rew_buf = np.zeros(size, dtype=np.float32)
+        self.done_buf = np.zeros(size, dtype=np.float32)
+        self.obstacle_buf = np.zeros((size, obstacle_dim + 1, obstacle_num), dtype=np.float32)
+        self.ptr, self.size, self.max_size = 0, 0, size
+        self.device = device
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+
+    def store(self, obs, act, rew, next_obs, done, obstacles_list):
+        # Check if any of the inputs except 'done' contain NaN, Inf, or -Inf.
+        if not (np.any(np.isnan(obs)) or np.any(np.isnan(next_obs)) or 
+                np.any(np.isnan(act)) or np.any(np.isnan(rew)) or 
+                np.any(np.isinf(obs)) or np.any(np.isinf(next_obs)) or 
+                np.any(np.isinf(act)) or np.any(np.isinf(rew))):
+            self.obs_buf[self.ptr] = obs
+            self.obs2_buf[self.ptr] = next_obs
+            self.act_buf[self.ptr] = act
+            self.rew_buf[self.ptr] = rew
+            self.done_buf[self.ptr] = float(done)
+            # Store obstacles as a (obstacle_dim + 1) * obstacle_num matrix
+            if obstacles_list is not None and len(obstacles_list) > 0:
+                obstacles_array = np.array(obstacles_list).T
+                obstacle_dim_act, obstacle_count_act = obstacles_array.shape
+                filled_obstacles = np.zeros((self.obstacle_dim + 1, self.obstacle_num), dtype=np.float32)
+                filled_obstacles[:obstacle_dim_act, :obstacle_count_act] = obstacles_array
+                # Set the mask row: 1 for existing obstacles, 0 for the rest
+                filled_obstacles[obstacle_dim_act, :obstacle_count_act] = 1.0
+                self.obstacle_buf[self.ptr] = filled_obstacles
+            self.ptr = (self.ptr + 1) % self.max_size
+            self.size = min(self.size + 1, self.max_size)
+        else:
+            print("Invalid sample encountered, skipping...")
+
+    def sample_batch(self, batch_size=32):
+        idxs = np.random.randint(0, self.size, size=batch_size)
+        batch = dict(obs=self.obs_buf[idxs],
+                     obs2=self.obs2_buf[idxs],
+                     act=self.act_buf[idxs],
+                     rew=self.rew_buf[idxs],
+                     done=self.done_buf[idxs],
+                     obstacles=self.obstacle_buf[idxs])
+
+        return {k: torch.as_tensor(v, dtype=torch.float32).to(self.device) for k, v in batch.items()}
+
 class ImageReplayBuffer:
     """
     A simple FIFO experience replay buffer for SAC agents.
@@ -217,8 +270,13 @@ class SAC_ASTAR_META:
         # Fank: only need to seed action space
         self.env.action_space.seed(seed)
         self.test_env.action_space.seed(seed)
+        
         # Create actor-critic module and target networks
-        self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
+        if self.env.unwrapped.config["with_obstacles_info"]:
+            actor_critic = core.SetActorCritic
+            self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
+        else:
+            self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
         self.ac_targ = deepcopy(self.ac)
         
         # set up summary writer
@@ -250,7 +308,10 @@ class SAC_ASTAR_META:
         self.q_params = itertools.chain(self.ac.q1.parameters(), self.ac.q2.parameters())
 
         # Experience buffer
-        self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
+        if self.env.unwrapped.config["with_obstacles_info"]:
+            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=10, size=self.replay_size, device=self.device)
+        else:
+            self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
         
         # Count variables (protip: try to get a feel for how different size networks behave!)
         var_counts = tuple(core.count_vars(module) for module in [self.ac.pi, self.ac.q1, self.ac.q2])
@@ -305,7 +366,7 @@ class SAC_ASTAR_META:
             itr = str(pretrained_itr) if pretrained_itr >= 0 else 'final'
             pretrained_file = pretrained_dir + 'model_' + itr + '.pth'
             print("Using pretrained model from {}".format(pretrained_file))
-            self.load(pretrained_file)
+            self.load(pretrained_file, whether_load_buffer=False)
             self.ac_targ = deepcopy(self.ac)
             
         self.astar_mp_steps = astar_mp_steps
@@ -318,19 +379,29 @@ class SAC_ASTAR_META:
 
     # Set up function for computing SAC Q-losses
     def compute_loss_q(self, data):
+        if self.env.unwrapped.config["with_obstacles_info"]:
+            obstacle = data["obstacles"]
         o, a, r, o2, d = data['obs'], data['act'], data['rew'], data['obs2'], data['done']
-
-        q1 = self.ac.q1(o,a)
-        q2 = self.ac.q2(o,a)
+        
+        if self.env.unwrapped.config["with_obstacles_info"]:
+            q1 = self.ac.q1(o, obstacle, a)
+            q2 = self.ac.q2(o, obstacle, a)
+        else:
+            q1 = self.ac.q1(o,a)
+            q2 = self.ac.q2(o,a)
 
         # Bellman backup for Q functions
         with torch.no_grad():
             # Target actions come from *current* policy
-            a2, logp_a2 = self.ac.pi(o2)
-
             # Target Q-values
-            q1_pi_targ = self.ac_targ.q1(o2, a2)
-            q2_pi_targ = self.ac_targ.q2(o2, a2)
+            if self.env.unwrapped.config["with_obstacles_info"]:
+                a2, logp_a2 = self.ac.pi(o2, obstacle)
+                q1_pi_targ = self.ac_targ.q1(o2, obstacle, a2)
+                q2_pi_targ = self.ac_targ.q2(o2, obstacle, a2)
+            else:
+                a2, logp_a2 = self.ac.pi(o2)
+                q1_pi_targ = self.ac_targ.q1(o2, a2)
+                q2_pi_targ = self.ac_targ.q2(o2, a2)
             q_pi_targ = torch.min(q1_pi_targ, q2_pi_targ)
             backup = r + self.gamma * (1 - d) * (q_pi_targ - self.alpha * logp_a2)
 
@@ -349,9 +420,15 @@ class SAC_ASTAR_META:
     # Set up function for computing SAC pi loss
     def compute_loss_pi(self, data):
         o = data['obs']
-        pi, logp_pi = self.ac.pi(o)
-        q1_pi = self.ac.q1(o, pi)
-        q2_pi = self.ac.q2(o, pi)
+        if self.env.unwrapped.config["with_obstacles_info"]:
+            obs = data["obstacles"]
+            pi, logp_pi = self.ac.pi(o, obs)
+            q1_pi = self.ac.q1(o, obs, pi)
+            q2_pi = self.ac.q2(o, obs, pi)
+        else:
+            pi, logp_pi = self.ac.pi(o)
+            q1_pi = self.ac.q1(o, pi)
+            q2_pi = self.ac.q2(o, pi)
         q_pi = torch.min(q1_pi, q2_pi)
 
         # Entropy-regularized policy loss
@@ -426,9 +503,27 @@ class SAC_ASTAR_META:
                 p_targ.data.mul_(self.polyak)
                 p_targ.data.add_((1 - self.polyak) * p.data)
 
-    def get_action(self, o, deterministic=False, rgb_image=None):
-        return self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(self.device), 
-                    deterministic)
+    def get_action(self, o, info=None, deterministic=False, rgb_image=None):
+        if info is None:
+            return self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(self.device), 
+                        deterministic)
+        else:
+            obstacles_list = info["obstacles_properties"]
+            
+            if obstacles_list is not None and len(obstacles_list) > 0:
+                obstacles_array = np.array(obstacles_list).T
+                obstacle_dim_act, obstacle_count_act = obstacles_array.shape
+                filled_obstacles = np.zeros((self.replay_buffer.obstacle_dim + 1, self.replay_buffer.obstacle_num), dtype=np.float32)
+                filled_obstacles[:obstacle_dim_act, :obstacle_count_act] = obstacles_array
+                # Set the mask row: 1 for existing obstacles, 0 for the rest
+                filled_obstacles[obstacle_dim_act, :obstacle_count_act] = 1.0
+            else:
+                filled_obstacles = np.zeros((self.replay_buffer.obstacle_dim + 1, self.replay_buffer.obstacle_num), dtype=np.float32)
+            return self.ac.act(torch.as_tensor(o, dtype=torch.float32).to(self.device),
+                               torch.as_tensor(filled_obstacles, dtype=torch.float32).to(self.device),
+                               deterministic)
+            
+            
 
     def test_agent(self, global_steps):
         average_ep_ret = 0.0
@@ -442,15 +537,17 @@ class SAC_ASTAR_META:
             while not(terminated or truncated):
                 # Take deterministic actions at test time
                 if self.env.unwrapped.observation_type == "original" :
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), True))
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), deterministic=True))
                 elif self.env.unwrapped.observation_type == "lidar_detection":
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), True))
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), deterministic=True))
                 elif self.env.unwrapped.observation_type == "one_hot_representation":
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), True))
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), deterministic=True))
                 elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), True))
-                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
-                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), True))
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), deterministic=True))
+                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and not self.env.unwrapped.config["with_obstacles_info"]:
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), deterministic=True))
+                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and self.env.unwrapped.config["with_obstacles_info"]:
+                    o, r, terminated, truncated, info = self.test_env.step(self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), info, deterministic=True))
                 ep_ret += r
                 ep_len += 1
             average_ep_ret += ep_ret
@@ -495,8 +592,12 @@ class SAC_ASTAR_META:
                 pass
             else:
                 for transition in pack_transition_list:
+                    if not self.env.unwrapped.config["with_obstacles_info"]:
                         o, a, o2, r, d = transition
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
+                    else:
+                        o, a, o2, r, d, obstacles_properties = transition
+                        self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d, obstacles_properties)
             self.add_astar_number += 1
         print("Add to Replay Buffer:", self.add_astar_number)
         
@@ -515,7 +616,7 @@ class SAC_ASTAR_META:
             self.add_astar_number = 0
             # to Fasten the code, we first sample the all the start list
             encounter_start_list = []
-            encounter_start_list.append((o, info["obstacles_info"]))
+            encounter_start_list.append((o, info["obstacles_info"], info["obstacles_properties"]))
             # add_thread = threading.Thread(target=self.add_expert_trajectory_to_buffer, args=(o,))
             # add_thread.start()
             # astar_result = find_expert_trajectory(o, self.vehicle_type)
@@ -540,8 +641,10 @@ class SAC_ASTAR_META:
                     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]))
                 elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
                     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]))
-                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and not self.env.unwrapped.config["with_obstacles_info"]:
                     a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]))
+                elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and self.env.unwrapped.config["with_obstacles_info"]:
+                    a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), info)
                 # a = self.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['collision_metric']]))
             else:
                 a = self.env.action_space.sample()
@@ -565,12 +668,15 @@ class SAC_ASTAR_META:
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d)
             elif self.env.unwrapped.observation_type == "lidar_detection":
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection']]), d)
-            elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+            elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and not self.env.unwrapped.config["with_obstacles_info"]:
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot']]), d)
+            elif self.env.unwrapped.observation_type == "lidar_detection_one_hot" and self.env.unwrapped.config["with_obstacles_info"]:
+                self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['lidar_detection_one_hot']]), d, info["obstacles_properties"])
             elif self.env.unwrapped.observation_type == "one_hot_representation":
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation']]), d)
             elif self.env.unwrapped.observation_type == "one_hot_representation_enhanced":
                 self.replay_buffer.store(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['one_hot_representation_enhanced']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal'], o2['one_hot_representation_enhanced']]), d)
+            
             if self.whether_her:
                 # currently not used
                 temp_buffer.append((np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), a, r, np.concatenate([o2['observation'], o2['achieved_goal'], o2['desired_goal']]), d, info['crashed']))
@@ -594,8 +700,8 @@ class SAC_ASTAR_META:
                     # TODO: change for testing
                     if self.finish_episode_number % 1000 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
-                        # astar_results = [find_expert_trajectory_meta(o, self.env.unwrapped.map, self.astar_mp_steps, self.astar_N_steps, self.astar_max_iter, self.astar_heuristic_type, self.env.unwrapped.observation_type) for o in encounter_start_list]
-                        astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.env.unwrapped.map, self.astar_mp_steps, self.astar_N_steps, self.astar_max_iter, self.astar_heuristic_type, self.env.unwrapped.observation_type) for o in encounter_start_list)
+                        # astar_results = [find_expert_trajectory_meta(o, self.env.unwrapped.map, self.astar_mp_steps, self.astar_N_steps, self.astar_max_iter, self.astar_heuristic_type, self.env.unwrapped.observation_type, self.env.unwrapped.config["with_obstacles_info"]) for o in encounter_start_list]
+                        astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.env.unwrapped.map, self.astar_mp_steps, self.astar_N_steps, self.astar_max_iter, self.astar_heuristic_type, self.env.unwrapped.observation_type, self.env.unwrapped.config["with_obstacles_info"]) for o in encounter_start_list)
                         # Clear the result
                         encounter_start_list = []
                         self.add_results_to_buffer(astar_results)
@@ -608,7 +714,7 @@ class SAC_ASTAR_META:
                         for _ in range(20):
                             o, info = self.test_env.reset(seed=(self.big_number + self.count_unrelated_task)) # may need to change to test_env
                             self.count_unrelated_task += 1
-                            encounter_start_list.append((o, info["obstacles_info"]))
+                            encounter_start_list.append((o, info["obstacles_info"], info["obstacles_properties"]))
                             
                         
                         astar_results = Parallel(n_jobs=-1)(delayed(find_expert_trajectory_meta)(o, self.vehicle_type) for o in encounter_start_list)
@@ -617,7 +723,7 @@ class SAC_ASTAR_META:
                         self.add_results_to_buffer(astar_results)
                 o, info = self.env.reset(seed=(self.seed + t))
                 if self.whether_astar and not self.astar_ablation:
-                    encounter_start_list.append((o, info["obstacles_info"]))
+                    encounter_start_list.append((o, info["obstacles_info"], info["obstacles_properties"]))
                     
                 episode_start_time = time.time()
                 # if self.whether_astar:
