@@ -100,7 +100,7 @@ def main():
         "mp_step": 10, # Important
         "N_steps": 10, # Important
         "range_steer_set": 20,
-        "max_iter": 50,
+        "max_iter": 10,
         "heuristic_type": "mix",
         "save_final_plot": False,
         "controlled_vehicle_config": {
@@ -129,15 +129,70 @@ def main():
         "acceptance_error": 0.5,
     }
     
-    with open("10task_unsolved_list.pkl", "rb") as f:
+    
+    with open("datasets/task_list_way_point_new.pkl", "rb") as f:
         task_list = pickle.load(f)
+    whether_plan = True
+        
+    # with open("10task_unsolved_list.pkl", "rb") as f:
+    #     task_list = pickle.load(f)
     
     for j in range(len(task_list)):
         use_task_list = [task_list[j]]
         env.unwrapped.update_task_list(use_task_list)
         obs, info = env.reset()
-        env.unwrapped.real_render()
-        goal_check_dict = planner.check_and_adjust_goal(obs["desired_goal"], 5, 5, env.unwrapped.ox, env.unwrapped.oy)
+        if planner.check_is_start_feasible(obs["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+            env.unwrapped.real_render()
+            way_points = use_task_list[0]["way_point"]
+            k = len(way_points)
+            goal_reached = False
+            for i in range(k):
+                if goal_reached:
+                    break
+                # env.unwrapped.controlled_vehicle.reset_equilibrium(way_points[i][0], way_points[i][1], way_points[i][2])
+                for yaw in [0, np.pi/2, np.pi, -np.pi/2]:
+                    env.unwrapped.controlled_vehicle.reset_equilibrium(way_points[i][0], way_points[i][1], yaw)
+                    waypoint = np.array([way_points[i][0], way_points[i][1], yaw, yaw, yaw, yaw],
+                                    dtype=np.float32)
+                    if not planner.check_waypoint_legal(env, waypoint):
+                        print("illegal waypoint")
+                    else:
+                        print("legal waypoint")
+                        env.unwrapped.real_render()
+                        if whether_plan:
+                            result_dict = planner.find_astar_trajectory_two_phases(env, obs["achieved_goal"], obs["desired_goal"], waypoint, info["obstacles_info"], info["map_vertices"], planner_config)
+                            if result_dict.get("goal_reached", False):
+                                planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
+                                goal_reached = True
+                                break
+            if goal_reached:
+                continue
+            # waypoint = np.array([way_points[i][0], way_points[i][1], way_points[i][2], way_points[i][2], way_points[i][2], way_points[i][2]],
+            #                     dtype=np.float32)
+
+            # if not planner.check_waypoint_legal(env, waypoint):
+            #     print("illegal waypoint")
+            # else:
+            #     print("legal waypoint")        
+            # result_dict = planner.find_astar_trajectory_two_phases(env, obs["achieved_goal"], obs["desired_goal"], waypoint, info["obstacles_info"], info["map_vertices"], planner_config)
+            # planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
+    
+    
+    # result_dict1 = planner.find_astar_trajectory(obs["achieved_goal"], np.array(env.unwrapped.controlled_vehicle.state, dtype=np.float32), info["obstacles_info"], info["map_vertices"], planner_config)
+    # control_list1 = result_dict1.get('control_list', [])
+    # state_list1 = result_dict1.get("state_list", [])
+    # final_state1 = state_list1[-1]
+    # planner.visualize_planner_final_result(obs["achieved_goal"], np.array(env.unwrapped.controlled_vehicle.state, dtype=np.float32), info["obstacles_info"], info["map_vertices"], result_dict1)
+    # control_list2, finetune_state = planner.finetune_trajectory(final_state1, env.unwrapped.ox, env.unwrapped.oy)
+    # result_dict2 = planner.find_astar_trajectory(finetune_state, obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
+    # planner.visualize_planner_final_result(finetune_state, obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict2)
+    # control_list3 = result_dict2.get('control_list', [])
+    # control_list = control_list1 + control_list2 + control_list3
+    # result_dict = planner.test_forward_simulation_three_trailer(obs["achieved_goal"], obs["desired_goal"], env.unwrapped.ox, env.unwrapped.oy, control_list, simulation_freq=10, perception_required=None)
+    # result_dict["control_list"] = control_list
+    # planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
+            
+        
         # result_dict = planner.find_astar_trajectory(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
         # planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
     # for j in range(10000):
