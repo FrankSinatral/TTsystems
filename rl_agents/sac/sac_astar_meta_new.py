@@ -151,27 +151,27 @@ class SAC_ASTAR_META_NEW:
         ## get all parameters from the config file
         self.algo = "sac_astar"
         self.config = config
-        self.steps_per_epoch = self.config.get("sac_steps_per_epoch", 4000)
+        self.steps_per_epoch = self.config.get("sac_steps_per_epoch", 50000)
         self.epochs = self.config.get("sac_epochs", 50)
-        self.gamma = self.config.get("gamma", 0.99)
-        self.polyak = self.config.get("polyak", 0.995)
+        self.gamma = self.config.get("gamma", 0.95)
+        self.polyak = self.config.get("polyak", 0.95)
         self.lr = self.config.get("lr", 1e-3)
         self.alpha = self.config.get("alpha", 0.2)
         self.log_alpha_lr = self.config.get("log_alpha_lr", 1e-3)
-        self.batch_size = self.config.get("batch_size", 100)
-        self.start_steps = self.config.get("start_steps", 10000)
+        self.batch_size = self.config.get("batch_size", 1024)
+        self.start_steps = self.config.get("start_steps", 1000)
         self.update_after = self.config.get("update_after", 1000)
-        self.update_every = self.config.get("update_every", 50)
+        self.update_every = self.config.get("update_every", 2000)
         self.save_freq = self.config.get("save_freq", 10)
-        self.num_test_episodes = self.config.get("num_test_episodes", 10)
+        self.num_test_episodes = self.config.get("num_test_episodes", 100)
         self.log_dir = self.config.get("log_dir", 'runs_rl/')
         self.whether_her = self.config.get("whether_her", False)
-        self.use_automatic_entropy_tuning = self.config.get("use_auto", False)
+        self.use_automatic_entropy_tuning = self.config.get("use_auto", True)
         self.env_name = self.config.get("env_name", 'planning-v0')
         self.pretrained = self.config.get("pretrained", False)
         self.pretrained_itr = self.config.get("pretrained_itr", None)
         self.pretrianed_dir = self.config.get("pretrained_dir", None)
-        self.whether_astar = self.config.get("whether_astar", False)
+        self.whether_astar = self.config.get("whether_astar", True)
         self.astar_ablation = self.config.get("astar_ablation", False)
         self.astar_mp_steps = self.config.get("astar_mp_steps", 10)
         self.astar_N_steps = self.config.get("astar_N_steps", 10)
@@ -241,11 +241,11 @@ class SAC_ASTAR_META_NEW:
             self.number_bounding_box = 4
         
         self.state_dim = self.env.observation_space['observation'].shape[0]
-        if self.env.unwrapped.observation_type == 'original':
+        if self.observation_type == 'original':
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim,), np.float32)
-        elif self.env.unwrapped.observation_type == "lidar_detection_one_hot":
+        elif self.observation_type == "lidar_detection_one_hot":
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 9*self.number_bounding_box,), np.float32)
-        elif self.env.unwrapped.observation_type == "lidar_detection_one_hot_triple":
+        elif self.observation_type == "lidar_detection_one_hot_triple":
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 27*self.number_bounding_box,), np.float32)
         else:
             self.box = Box(-np.inf, np.inf, (3 * self.state_dim + 40,), np.float32)
@@ -521,7 +521,7 @@ class SAC_ASTAR_META_NEW:
             while not(terminated or truncated):
                 # Take deterministic actions at test time
                 obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
-                if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                if not self.observation_type.startswith("original"):
                     obs_list.append(o[self.observation_type])
                 if self.observation_type == "original_with_obstacles_info":
                     obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
@@ -590,13 +590,16 @@ class SAC_ASTAR_META_NEW:
                         d = False
                         r = -1
                     a = result_dict["control_list"][i]
-                    if self.env.unwrapped.observation_type == "original":
+                    if self.observation_type == "original":
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1]))
                         o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1]))
+                    elif self.observation_type == "original_with_obstacles_info":
+                        o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
+                        o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
                     else:
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], result_dict["perception_list"][i]))
                         o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], result_dict["perception_list"][i+1]))
-                    if not self.env.unwrapped.config["with_obstacles_info"]:    
+                    if not self.whether_attention:    
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
                     else:
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d, obstacles_properties)
@@ -673,7 +676,7 @@ class SAC_ASTAR_META_NEW:
             # use the learned policy. 
             if t > self.start_steps:
                 obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
-                if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                if not self.observation_type.startswith("original"):
                     obs_list.append(o[self.observation_type])
                 if self.observation_type == "original_with_obstacles_info":
                     obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
@@ -700,7 +703,7 @@ class SAC_ASTAR_META_NEW:
             # Store experience to replay buffer
             obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
             next_obs_list = [o2['observation'], o2['achieved_goal'], o2['desired_goal']]
-            if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+            if not self.observation_type.startswith("original"):
                 obs_list.append(o[self.observation_type])
                 next_obs_list.append(o2[self.observation_type])
             if self.observation_type == "original_with_obstacles_info":
@@ -718,7 +721,7 @@ class SAC_ASTAR_META_NEW:
                 
                 obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
                 next_obs_list = [o2['observation'], o2['achieved_goal'], o2['desired_goal']]
-                if self.observation_type != "original" and self.observation_type != "original_with_obstacles_info":
+                if not self.observation_type.startswith("original"):
                     obs_list.append(o[self.observation_type])
                     next_obs_list.append(o2[self.observation_type])
                 if self.observation_type == "original_with_obstacles_info":
@@ -746,8 +749,8 @@ class SAC_ASTAR_META_NEW:
                     # TODO: change for testing
                     if self.finish_episode_number % 1000 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
-                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.env.unwrapped.observation_type) for task in encounter_task_list)
-                        # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], planner_config, self.env.unwrapped.observation_type) for task in encounter_task_list]
+                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list)
+                        # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list]
                         # Clear the result
                         self.add_results_to_buffer(encounter_task_list, astar_results)
                         encounter_task_list = []
@@ -795,6 +798,8 @@ class SAC_ASTAR_META_NEW:
 
                 # Save model
                 if (epoch % self.save_freq == 0) or (epoch == self.epochs):
+                    if not os.path.exists(self.save_model_path):
+                        os.makedirs(self.save_model_path)
                     self.save(self.save_model_path +'/model_' + str(t) + '.pth')
                     # pass
                     # self.logger.save_state({'env': self.env}, itr=epoch)

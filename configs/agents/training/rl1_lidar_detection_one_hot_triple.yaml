@@ -1,4 +1,4 @@
-algo_name: 'rl1_obs_mlp'
+algo_name: 'rl1_lidar_detection_one_hot_triple'
 seed: 10
 env_name: 'planning-v0' # remember to switch script
 sac_steps_per_epoch: 50000
@@ -101,5 +101,5 @@ env_config:
   use_rgb: false
   use_gray: false
   with_obstacles_info: false #import for model selection
-  observation: original_with_obstacles_info # ways for perception
+  observation: lidar_detection_one_hot_triple # ways for perception
   

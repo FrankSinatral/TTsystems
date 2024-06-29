@@ -121,26 +121,15 @@ def main():
     #     # env.unwrapped.run_simulation()
     #     t2 = time.time()
     #     print("Time: ", t2 - t1)
-    for j in range(7, 10):
-        start_time = time.time()
+    for j in range(100):
         obs, info = env.reset(seed=j + 1)
         env.unwrapped.real_render()
-        result_dict = planner.find_astar_trajectory(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
-        planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
-        # gray_image = env.render_obstacles()
-        # rgb_image = env.render_jingyu()
-        
-        # rgb_image = env.render_obstacles()
-        # v_image = env.render_vehicles()
         terminated, truncated = False, False
         while (not terminated) and (not truncated):
             action = env.action_space.sample()
             # env.unwrapped.real_render()
             obs, reward, terminated, truncated, info = env.step(action)
-            # rgb_image = env.render_vehicles()
-        end_time = time.time()
-        print("time:", end_time - start_time)
-        env.unwrapped.run_simulation()
+            env.unwrapped.real_render()
         
     # env.unwrapped.real_render()
     print(1)

@@ -46,7 +46,7 @@ def test_forward_simulation_three_trailer(input, goal, ox, oy, control_list, sim
     controlled_vehicle = tt_envs.ThreeTrailer(config_dict)
     controlled_vehicle.reset(*input)
     state_list = [np.array(controlled_vehicle.state).astype(np.float32)]
-    if perception_required == "original" or perception_required is None:
+    if perception_required.startswith("original") or perception_required is None:
         perception_list = []
     elif perception_required == "lidar_detection_one_hot":
         perception_list = [controlled_vehicle.lidar_detection_one_hot(5, ox, oy)]

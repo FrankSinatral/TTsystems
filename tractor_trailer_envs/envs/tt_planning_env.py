@@ -653,9 +653,7 @@ class TractorTrailerMetaPlanningEnv(Env):
         
         - case2: there is obstacles we have to check whether the goal is legal
         """
-        max_generation_number = 100
-        generation_goal_count = 0
-        while generation_goal_count <= max_generation_number:
+        while True:
             x_coordinates = self.np_random.uniform(self.config["generate_goals_config"]["x_min"], self.config["generate_goals_config"]["x_max"])
             y_coordinates = self.np_random.uniform(self.config["generate_goals_config"]["y_min"], self.config["generate_goals_config"]["y_max"])
             yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
@@ -667,8 +665,6 @@ class TractorTrailerMetaPlanningEnv(Env):
             else: 
                 if self.check_bounding_box_list_inside_map(bounding_box_list) and self.check_bounding_box_list_not_collide_obstacles(bounding_box_list, obstacles_info):
                     return current_goal
-            generation_goal_count += 1
-        print("generate goal failed")
     
     def sample_obstacles(self):
         # sample fixed number obstacles
