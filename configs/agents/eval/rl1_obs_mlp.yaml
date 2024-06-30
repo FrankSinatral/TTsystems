@@ -30,7 +30,7 @@ astar_max_iter: 50
 astar_heuristic_type: 'traditional'
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
-use_logger: true
+use_logger: false
 
 
 pretrained: false

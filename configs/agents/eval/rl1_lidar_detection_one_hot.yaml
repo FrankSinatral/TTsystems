@@ -29,7 +29,7 @@ astar_max_iter: 50
 astar_heuristic_type: 'mix'
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
-
+use_logger: false
 
 pretrained: false
 pretrained_itr: 4499999
