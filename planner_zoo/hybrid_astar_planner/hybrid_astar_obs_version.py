@@ -135,6 +135,19 @@ def mixed_norm(goal, final_state):
     total_distance = np.sqrt(position_diff_square + angle_diff_square)
     return total_distance
 
+def process_obstacles_properties_to_array(input_list):
+    """process for mlp with obstacles properties"""
+    array_length = 40
+    result_array = np.zeros(array_length, dtype=np.float32)
+    
+    # 将input_list中的元素顺次填入result_array中
+    for i, (x, y, l, d) in enumerate(input_list):
+        if i >= 10:
+            break
+        result_array[i*4:i*4+4] = [x, y, l, d]
+    
+    return result_array
+
 class RlPath:
     pass
 
@@ -4424,26 +4437,35 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             self.qp = hyastar.NewQueuePrior()
         else:
             self.qp = hyastar.QueuePrior()
-        if self.heuristic_type == 'rl' or self.heuristic_type == 'mix':
-            self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            # this is the planner1 config
-            with open("configs/agents/training/planner1.yaml", "r") as f:
-                # TODO: each time you need to set the config file align with self.observation_type 
-                config_algo = yaml.safe_load(f)
-            self.agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
-                config=config_algo,
-                device='cpu')
-            filename = "datasets/models/original_model.pth"
-            self.agent.load(filename, whether_load_buffer=False)
-        elif self.heuristic_type == 'mix_lidar_detection_one_hot':
-            self.device =  torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            with open("configs/agents/eval/rl1_lidar_detection_one_hot.yaml", "r") as f:
-                config_algo = yaml.safe_load(f)
-            self.agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
-                config=config_algo,
-                device='cpu')
-            filename = "datasets/models/lidar_detection_one_hot_model2.pth"
-            self.agent.load(filename, whether_load_buffer=False)
+        # TODO: change the model path to the suited one
+        # heuristic_type: traditional, rl, mix_original
+        # mix_original_with_obstacles_info, mix_lidar_detection_one_hot, mix_lidar_detection_one_hot_triple
+        # mix_attention
+        if self.heuristic_type == 'rl':
+            config_filename = "configs/agents/training/planner1.yaml"
+            model_filename = "datasets/models/original_model.pth"
+        elif self.heuristic_type == 'mix_original':
+            config_filename = "configs/agents/eval/rl0.yaml"
+            model_filename = "datasets/models/original_model.pth"
+        elif self.heuristic_type == "mix_original_with_obstacles_info":
+            config_filename = "configs/agents/eval/rl1_obs_mlp.yaml"
+            model_filename = "datasets/models/original_model.pth"
+        elif self.heuristic_type == "mix_lidar_detection_one_hot":
+            config_filename = "configs/agents/eval/rl1_lidar_detection_one_hot.yaml"
+            model_filename = "datasets/models/original_model.pth"
+        elif self.heuristic_type == "mix_lidar_detection_one_hot_triple":
+            config_filename = "configs/agents/eval/rl1_lidar_detection_one_hot_triple.yaml"
+            model_filename = "datasets/models/original_model.pth"
+        elif self.heuristic_type == "mix_attention":
+            config_filename = "configs/agents/eval/rl1_attention.yaml"
+            model_filename = "datasets/models/original_model.pth"
+        with open(config_filename, "r") as f:
+            # TODO: each time you need to set the config file align with self.observation_type 
+            config_algo = yaml.safe_load(f)
+        self.agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
+            config=config_algo,
+            device='cpu')
+        self.agent.load(model_filename, whether_load_buffer=False)
             
     
     
@@ -5781,10 +5803,16 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not terminated:
-            if self.heuristic_type == "mix":
+            if self.heuristic_type == "mix_original" or self.heuristic_type == "rl":
                 a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), deterministic=True)
+            elif self.heuristic_type == "mix_original_with_obstacles_info":
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], process_obstacles_properties_to_array(info['obstacles_properties'])]), deterministic=True)
             elif self.heuristic_type == "mix_lidar_detection_one_hot":
                 a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), deterministic=True)
+            elif self.heuristic_type == "mix_lidar_detection_one_hot_triple":
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), deterministic=True)
+            else: # attention
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), info, deterministic=True)
             o, r, terminated, truncated, info = self.agent.test_env.step(a)
             ep_ret += r
             ep_len += 1
@@ -5975,7 +6003,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         elif self.heuristic_type == "rl":
             # TODO wait for RL to guide search
             t1 = time.time()
-            find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+            find_feasible, path = self.new_rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+            # find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
             t2 = time.time()
             print("time for rl simulation:", t2 - t1)
             if find_feasible:
@@ -5997,8 +6026,9 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 # self.qp.put(self.calc_index(nstart), cost_qp)
                 self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
         else:
-            # Fank: Mixture of two gears
-            find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+            # Fank: Mixture of two gears, mix
+            # find_feasible, path = self.rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+            find_feasible, path = self.new_rl_gear(nstart, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
             if find_feasible:
                 fnode = path.info["final_node"]
                 find_rl_path = True
@@ -6033,8 +6063,6 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 else:
                     self.qp.put(self.calc_index(nstart), self.calc_hybrid_cost_simplify(nstart, ngoal, path.rscost)) 
                 
-        
-        
         # Main Loop
         while True:
             if update:
@@ -6119,7 +6147,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                             # self.qp.put(node_ind, cost_qp)
                             self.qp.put(node_ind, self.calc_hybrid_cost_simplify(nstart, ngoal, path.rlcost))
                     else:
-                        find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+                        # find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+                        find_feasible, path = self.new_rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
                         if self.config["plot_expand_tree"]:
                             self.plot_expand_tree(start, goal, closed_set, open_set)
                             plot_rl_path(path, self.ox, self.oy)
@@ -6219,7 +6248,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                                     self.qp.queue[node_ind] = self.calc_hybrid_cost_simplify(node, ngoal, path.rlcost) 
                                     
                             else:
-                                find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+                                # find_feasible, path = self.rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
+                                find_feasible, path = self.new_rl_gear(node, ngoal, obstacles_info=obstacles_info, map_vertices=map_vertices)
                                 if self.config["plot_expand_tree"]:
                                     self.plot_expand_tree(start, goal, closed_set, open_set)
                                     plot_rl_path(path, self.ox, self.oy)

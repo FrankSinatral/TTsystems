@@ -1,4 +1,4 @@
-algo_name: 'rl0'
+algo_name: 'rl1_lidar_detection_one_hot_triple'
 seed: 10
 env_name: 'planning-v0' # remember to switch script
 sac_steps_per_epoch: 50000
@@ -20,8 +20,8 @@ logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
-whether_her: false
-use_auto: True
+whether_her: true
+use_auto: true
 whether_astar: true
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
@@ -29,13 +29,13 @@ astar_N_steps: 10
 astar_max_iter: 50
 astar_heuristic_type: 'traditional'
 whether_dataset: false
-dataset_path: 'datasets/goal_with_obstacles_info_list.pickle'
-use_logger: false
+dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
+use_logger: true
 
 
-pretrained: False
-pretrained_itr: 2499999
-pretrained_dir: 'runs_rl/reaching-v0_sac_astar_three_trailer_60_20240122_223222/'
+pretrained: false
+pretrained_itr: 4499999
+pretrained_dir: 'runs_rl/meta-reaching-v0_rl1_lidar_detection_one_hot_three_trailer_10_20240426_082843/'
 
 env_config:
   allow_backward: true
@@ -101,4 +101,5 @@ env_config:
   use_rgb: false
   use_gray: false
   with_obstacles_info: false #import for model selection
-  observation: original
+  observation: lidar_detection_one_hot_triple # ways for perception
+  
