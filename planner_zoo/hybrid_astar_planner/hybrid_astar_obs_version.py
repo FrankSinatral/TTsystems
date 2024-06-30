@@ -2144,6 +2144,7 @@ class OneTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         return critic_value
     
     def rl_gear(self, n_curr, n_goal, max_step=60, terminated=0.5):
+        # TODO: remains to be fixed a lot of things
         rl_path = RlPath()
         # use rl agent to guide our search
         n_curr_x = n_curr.x[-1]
@@ -5600,7 +5601,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
     def rl_gear(self, n_curr, n_goal, obstacles_info=None, map_vertices=None,  max_step=60, terminated=0.5):
         """In this function we use meta env as a simulated env
         As a result, we should change the obstacles_info to local coordinates
-        
+        TODO: remains to be fixed
         """
         rl_path = RlPath()
         # use rl agent to guide our search

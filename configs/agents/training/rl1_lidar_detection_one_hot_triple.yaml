@@ -20,7 +20,7 @@ logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
-whether_her: false
+whether_her: true
 use_auto: true
 whether_astar: true
 astar_ablation: false # true stands for ablation study
