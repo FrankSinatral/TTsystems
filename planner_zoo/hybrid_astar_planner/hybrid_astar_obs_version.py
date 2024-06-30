@@ -5743,6 +5743,131 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         # self.agent.test_env.unwrapped.run_simulation()
         return find_feasible, rl_path
     
+    def new_rl_gear(self, n_curr, n_goal, obstacles_info=None, map_vertices=None, max_step=60, terminated=0.5):
+        """
+        This function uses the RL agent to guide the search directly in global coordinates.
+        """
+        rl_path = RlPath()
+        
+        n_curr_x = n_curr.x[-1]
+        n_curr_y = n_curr.y[-1]
+        n_curr_yaw = n_curr.yaw[-1]
+        n_curr_yawt1 = n_curr.yawt1[-1]
+        n_curr_yawt2 = n_curr.yawt2[-1]
+        n_curr_yawt3 = n_curr.yawt3[-1]
+        n_goal_x = n_goal.x[-1]
+        n_goal_y = n_goal.y[-1]
+        n_goal_yaw = n_goal.y[-1]
+        n_goal_yawt1 = n_goal.yawt1[-1]
+        n_goal_yawt2 = n_goal.yawt2[-1]
+        n_goal_yawt3 = n_goal.yawt3[-1]
+
+        # Fank: Notice here that we don't need to convert the global coordinates to local coordinates
+        start = np.array([n_curr_x, n_curr_y, n_curr_yaw, n_curr_yawt1, n_curr_yawt2, n_curr_yawt3], dtype=np.float32)
+        goal = np.array([n_goal_x, n_goal_y, n_goal_yaw, n_goal_yawt1, n_goal_yawt2, n_goal_yawt3], dtype=np.float32)
+
+        task_list = [
+            {
+                "start": start,
+                "goal": goal,
+                "obstacles_info": obstacles_info,
+                "map_vertices": map_vertices,
+            }
+        ]
+    
+        # Update the test_env with this task list
+        self.agent.test_env.unwrapped.update_task_list(task_list)
+        o, info = self.agent.test_env.reset()
+        
+        terminated, truncated, ep_ret, ep_len = False, False, 0, 0
+        while not terminated:
+            if self.heuristic_type == "mix":
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), deterministic=True)
+            elif self.heuristic_type == "mix_lidar_detection_one_hot":
+                a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot']]), deterministic=True)
+            o, r, terminated, truncated, info = self.agent.test_env.step(a)
+            ep_ret += r
+            ep_len += 1
+            if ep_len >= max_step:
+                break
+
+        if info['is_success'] == True:
+            find_feasible = True
+        else:
+            find_feasible = False
+        
+        path_x = []
+        path_y = []
+        path_yaw = []
+        path_yawt1 = []
+        path_yawt2 = []
+        path_yawt3 = []
+        
+        for state in self.agent.test_env.unwrapped.state_list:
+            x_global = state[0]
+            y_global = state[1]
+            yaw_global = state[2]
+            yawt1_global = state[3]
+            yawt2_global = state[4]
+            yawt3_global = state[5]
+            path_x.append(x_global)
+            path_y.append(y_global)
+            path_yaw.append(yaw_global)
+            path_yawt1.append(yawt1_global)
+            path_yawt2.append(yawt2_global)
+            path_yawt3.append(yawt3_global)
+        
+        rl_path.x = path_x
+        rl_path.y = path_y
+        rl_path.yaw = path_yaw
+        rl_path.yawt1 = path_yawt1
+        rl_path.yawt2 = path_yawt2
+        rl_path.yawt3 = path_yawt3
+        rl_path.rlcontrollist = action_recover_to_planner(self.agent.test_env.unwrapped.action_list)
+        rl_path.info = {
+            "is_success": info["is_success"],
+            "crashed": info["crashed"],
+            "jack_knife": info["jack_knife"],
+            "final_node": None,
+        }
+        
+        ind = range(0, len(rl_path.x), int(self.config["collision_check_step"]/4))
+        
+        pathx = [rl_path.x[k] for k in ind]
+        pathy = [rl_path.y[k] for k in ind]
+        pathyaw = [rl_path.yaw[k] for k in ind]
+        pathyawt1 = [rl_path.yawt1[k] for k in ind]
+        pathyawt2 = [rl_path.yawt2[k] for k in ind]
+        pathyawt3 = [rl_path.yawt3[k] for k in ind]
+        if self.is_collision(pathx, pathy, pathyaw, pathyawt1, pathyawt2, pathyawt3):
+            rl_path.info["crashed"] = True
+            rl_path.info["is_success"] = False
+            find_feasible = False
+        
+        cost = self.calc_rl_path_cost_three_trailer(rl_path)
+        rl_path.rlcost = cost
+        
+        if find_feasible:
+            xind = round(path_x[-1] / self.xyreso)
+            yind = round(path_y[-1] / self.xyreso)
+            yawind = round(path_yaw[-1] / self.yawreso)
+            fd = [1 if action[0] > 0 else -1 for action in rl_path.rlcontrollist]
+            fx = path_x[1:]
+            fy = path_y[1:]
+            fyaw = path_yaw[1:]
+            fyawt1 = path_yawt1[1:]
+            fyawt2 = path_yawt2[1:]
+            fyawt3 = path_yawt3[1:]
+            fsteer = 0.0
+            fcost = n_curr.cost + cost
+            fpind = self.calc_index(n_curr)
+            direction = fd[-1]
+            final_node = hyastar.Node_three_trailer(self.vehicle, xind, yind, yawind, direction,
+                                                    fx, fy, fyaw, fyawt1, fyawt2, fyawt3, fd, fsteer, fcost, fpind)
+            rl_path.info["final_node"] = final_node
+
+        return find_feasible, rl_path
+    
     def check_start_mp_feasible(self, start:np.ndarray) -> bool:
         """first check whether the start point is feasible 
         given a complex obstacles environment(not collision)
