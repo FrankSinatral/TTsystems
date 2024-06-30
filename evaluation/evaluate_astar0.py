@@ -101,7 +101,7 @@ def main():
         "N_steps": 10, # Important
         "range_steer_set": 20,
         "max_iter": 50,
-        "heuristic_type": "mix",
+        "heuristic_type": "mix_original",
         "save_final_plot": False,
         "controlled_vehicle_config": {
             "w": 2.0, #[m] width of vehicle
@@ -129,7 +129,7 @@ def main():
         "acceptance_error": 0.5,
     }
     
-    with open("10task_unsolved_list.pkl", "rb") as f:
+    with open("datasets/10task_list.pkl", "rb") as f:
         task_list = pickle.load(f)
     
     for j in range(len(task_list)):
@@ -137,9 +137,9 @@ def main():
         env.unwrapped.update_task_list(use_task_list)
         obs, info = env.reset()
         env.unwrapped.real_render()
-        goal_check_dict = planner.check_and_adjust_goal(obs["desired_goal"], 5, 5, env.unwrapped.ox, env.unwrapped.oy)
-        # result_dict = planner.find_astar_trajectory(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
-        # planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
+        # goal_check_dict = planner.check_and_adjust_goal(obs["desired_goal"], 5, 5, env.unwrapped.ox, env.unwrapped.oy)
+        result_dict = planner.find_astar_trajectory(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
+        planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
     # for j in range(10000):
     #     t1 = time.time()
     #     obs, _ = env.reset(seed=(40 + j))
