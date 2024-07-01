@@ -750,10 +750,10 @@ class SAC_ASTAR_META_NEW:
                 # Two Strategy for astar
                 if self.whether_astar and not self.astar_ablation:
                     # TODO: change for testing
-                    if self.finish_episode_number % 10 == 0: # put this number smaller
+                    if self.finish_episode_number % 1000 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
                         start_time = time.time()
-                        astar_results = Parallel(n_jobs=20)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list)
+                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list)
                         # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list]
                         # Clear the result
                         self.add_results_to_buffer(encounter_task_list, astar_results)
