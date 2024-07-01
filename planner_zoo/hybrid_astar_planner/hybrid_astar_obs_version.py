@@ -6090,7 +6090,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             count += 1
             # add if the loop's too much
             if count > self.max_iter:
-                print("waste a long time to find")
+                if verbose:
+                    print("waste a long time to find")
                 if self.config["plot_failed_path"]:
                     self.extract_failed_path(start, goal, closed_set, nstart)
                 return None, None, None, None

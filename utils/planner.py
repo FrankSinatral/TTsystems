@@ -150,6 +150,8 @@ def find_astar_trajectory(input, goal, obstacles_info, map_vertices, config, per
     path, control_list, rs_path, expand_node_number = three_trailer_planner.plan_new_version(input, goal, get_control_sequence=True, verbose=False, obstacles_info=obstacles_info, map_vertices=map_vertices)
     end_planning_time = time.time()
     if control_list is None:
+        print("failed finding an astar path using:", config["heuristic_type"])
+        print("planning time:", end_planning_time - start_planning_time)
         result_dict = {
             "state_list": [input],
             "control_list": [],
@@ -167,6 +169,13 @@ def find_astar_trajectory(input, goal, obstacles_info, map_vertices, config, per
         result_dict["planning_time"] = end_planning_time - start_planning_time
         result_dict["expand_node_number"] = expand_node_number
         result_dict["planner_version"] = planner_version
+        if result_dict.get("goal_reached", False):
+            print("find an astar path using:", config["heuristic_type"])
+            print("planning time:", end_planning_time - start_planning_time)
+            print("expand node number:", expand_node_number)
+        else:
+            print("failed finding an astar path using:", config["heuristic_type"])
+            print("planning time:", end_planning_time - start_planning_time)
     return result_dict
 
 

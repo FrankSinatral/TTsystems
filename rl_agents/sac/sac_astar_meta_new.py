@@ -317,8 +317,6 @@ class SAC_ASTAR_META_NEW:
             self.big_number = int(1e9)
             self.count_unrelated_task = 0
         if self.whether_astar:
-            # self.lock = threading.Lock()
-            self.add_astar_number = 0
             self.add_astar_trajectory = 0
         self.finish_episode_number = 0
         
@@ -574,6 +572,7 @@ class SAC_ASTAR_META_NEW:
         
         """
         assert len(task_list) == len(result_list), "The length of task_list and result_list should be the same"
+        self.add_astar_trajectory = 0
         for j in range(len(task_list)):
             goal_reached = result_list[j].get("goal_reached")
             task_tuple = task_list[j]
@@ -604,6 +603,7 @@ class SAC_ASTAR_META_NEW:
                     else:
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d, obstacles_properties)
         print("Add to Replay Buffer:", self.add_astar_trajectory)
+        print("Total Success Rate:", self.add_astar_trajectory / len(task_list))
                 
                 
         
@@ -657,7 +657,6 @@ class SAC_ASTAR_META_NEW:
             o, info = self.env.reset(seed=(self.seed + feasible_seed_number))  
         episode_start_time = time.time()
         if self.whether_astar and not self.astar_ablation:
-            self.add_astar_number = 0
             self.add_astar_trajectory = 0
             # to Fasten the code, we first sample the all the start list
             encounter_task_list = []
@@ -744,15 +743,22 @@ class SAC_ASTAR_META_NEW:
                 self.finish_episode_number += 1
                 print("Finish Episode number:", self.finish_episode_number)
                 print("Episode Length:", ep_len)
+                print("Whether Jack_knife:", info["jack_knife"])
+                print("Whether Crashed:", info["crashed"])
+                print("Whether Success:", info["is_success"])
+                print("Whether Truncated:", truncated)
                 # Two Strategy for astar
                 if self.whether_astar and not self.astar_ablation:
                     # TODO: change for testing
-                    if self.finish_episode_number % 1000 == 0: # put this number smaller
+                    if self.finish_episode_number % 10 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
-                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list)
+                        start_time = time.time()
+                        astar_results = Parallel(n_jobs=20)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list)
                         # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list]
                         # Clear the result
                         self.add_results_to_buffer(encounter_task_list, astar_results)
+                        end_time = time.time()
+                        print("Astar collecting time:", end_time - start_time)
                         encounter_task_list = []
                 elif self.whether_astar and self.astar_ablation:
                     # TODO: not finished
