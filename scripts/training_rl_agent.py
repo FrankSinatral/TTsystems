@@ -15,7 +15,8 @@ def gym_tt_planning_env_fn(config: dict):
     return gym.make("tt-planning-v0", config=config)
 
 def main():
-    with open("configs/agents/training/rl1_lidar_detection_one_hot.yaml", 'r') as file:
+    config_filename = "configs/agents/training/rl1_lidar_detection_one_hot.yaml"
+    with open(config_filename, 'r') as file:
         config_algo = yaml.safe_load(file)
     agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
         config=config_algo)
