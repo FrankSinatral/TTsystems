@@ -20,14 +20,14 @@ logging_dir: 'runs_rl/'
 output_fname: 'experiment_document.txt'
 activation: 'ReLU'
 hidden_sizes: [512, 512, 512]
-whether_her: true
+whether_her: false
 use_auto: true
 whether_astar: true
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
-astar_max_iter: 50
-astar_heuristic_type: 'traditional'
+astar_max_iter: 10
+astar_heuristic_type: 'mix_original'
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
 use_logger: true
