@@ -44,12 +44,14 @@ def plot_map(ox, oy):
 def gym_reaching_tt_env_fn(config: dict): 
     return gym.make("tt-reaching-v0", config=config)
 
-def gym_meta_reaching_tt_env_fn(config: dict):
-    return gym.make("tt-meta-reaching-v0", config=config)
-
 
 # Apply our new-tt planning env to this agent for training
 def gym_tt_planning_env_fn(config: dict):
+    import gymnasium as gym
+    import tractor_trailer_envs as tt_envs
+    if not hasattr(gym_tt_planning_env_fn, "envs_registered"):
+        tt_envs.register_tt_envs()
+        gym_tt_planning_env_fn.envs_registered = True
     return gym.make("tt-planning-v0", config=config)
 
 def convert_obstacles_to_local(obstacles_info, n_curr_x, n_curr_y, n_curr_yaw):
