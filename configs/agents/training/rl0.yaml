@@ -1,7 +1,7 @@
 algo_name: 'rl0'
 seed: 10
 env_name: 'planning-v0' # remember to switch script
-sac_steps_per_epoch: 50000
+sac_steps_per_epoch: 50
 sac_epochs: 100
 replay_size: 1000000 # for cluttered, set to 500000
 gamma: 0.95 # need to adjust to 0.99 when using cluttered env

@@ -512,8 +512,49 @@ class SAC_ASTAR_META_NEW:
         success_rate = 0.0
         jack_knife_rate = 0.0
         crash_rate = 0.0
-        for j in range(self.num_test_episodes):
-            o, info = self.test_env.reset(seed=j)
+        planner_config = {
+            "plot_final_path": False,
+            "plot_rs_path": False,
+            "plot_expand_tree": False,
+            "mp_step": self.astar_mp_steps,
+            "N_steps": self.astar_N_steps,
+            "range_steer_set": 20,
+            "max_iter": self.astar_max_iter,
+            "heuristic_type": self.astar_heuristic_type,
+            "save_final_plot": False,
+            "controlled_vehicle_config": {
+                "w": 2.0,
+                "wb": 3.5,
+                "wd": 1.4,
+                "rf": 4.5,
+                "rb": 1.0,
+                "tr": 0.5,
+                "tw": 1.0,
+                "rtr": 2.0,
+                "rtf": 1.0,
+                "rtb": 3.0,
+                "rtr2": 2.0,
+                "rtf2": 1.0,
+                "rtb2": 3.0,
+                "rtr3": 2.0,
+                "rtf3": 1.0,
+                "rtb3": 3.0,
+                "max_steer": 0.6,
+                "v_max": 2.0,
+                "safe_d": 0.0,
+                "safe_metric": 3.0,
+                "xi_max": (np.pi) / 4,
+            },
+            "acceptance_error": 0.5,
+        }
+        feasible_seed_number = 0
+        finish_episode = 0
+        while finish_episode < self.num_test_episodes:
+            o, info = self.test_env.reset(seed=feasible_seed_number)
+            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+                feasible_seed_number += 1
+                o, info = self.test_env.reset(seed=feasible_seed_number)
+            finish_episode += 1
             terminated, truncated, ep_ret, ep_len = False, False, 0, 0
             
             while not(terminated or truncated):

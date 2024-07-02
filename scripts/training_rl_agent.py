@@ -16,7 +16,7 @@ def gym_tt_planning_env_fn(config: dict):
 
 def main():
     addtional_astar_dataset = False
-    config_filename = "configs/agents/training/rl1_obs_attention.yaml"
+    config_filename = "configs/agents/training/rl0.yaml"
     if addtional_astar_dataset:
         task_runner_configfile = "configs/envs/task_runner.yaml"
         with open(task_runner_configfile, 'r') as file:
