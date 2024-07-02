@@ -2,9 +2,9 @@ seed: 10
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
-astar_max_iter: 5
+astar_max_iter: 10
 astar_heuristic_type: 'mix_original'
-astar_batch_size: 10
+astar_batch_size: 1000
 astar_total_batch: 100
 whether_dataset: false
 save_model_path: 'datasets/data'
