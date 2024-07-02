@@ -595,9 +595,12 @@ class SAC_ASTAR_META_NEW:
                     elif self.observation_type == "original_with_obstacles_info":
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
                         o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
-                    else:
+                    elif self.observation_type.endswith("triple"):
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], result_dict["perception_list"][i]))
                         o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], result_dict["perception_list"][i+1]))
+                    else:
+                        o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], result_dict["perception_list"][i][:36]))
+                        o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], result_dict["perception_list"][i+1][:36]))
                     if not self.whether_attention:    
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
                     else:
@@ -760,6 +763,7 @@ class SAC_ASTAR_META_NEW:
                         end_time = time.time()
                         print("Astar collecting time:", end_time - start_time)
                         encounter_task_list = []
+                        astar_results = [] # Add clear astar results
                 elif self.whether_astar and self.astar_ablation:
                     # TODO: not finished
                     if self.finish_episode_number % 50 == 0:
