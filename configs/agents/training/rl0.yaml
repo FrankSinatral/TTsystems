@@ -1,6 +1,6 @@
 algo_name: 'rl0'
 seed: 10
-env_name: 'meta-reaching-v0' # remember to switch script
+env_name: 'planning-v0' # remember to switch script
 sac_steps_per_epoch: 50000
 sac_epochs: 100
 replay_size: 1000000 # for cluttered, set to 500000
@@ -33,8 +33,6 @@ pretrained_dir: 'runs_rl/reaching-v0_sac_astar_three_trailer_60_20240122_223222/
 
 env_config:
   allow_backward: true
-  distance_matrix: [1.00, 1.00, 1.00, 1.00, 1.00, 1.00]
-  reward_weights: [1, 0.3, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02]
   max_episode_steps: 40
   N_steps: 10
   controlled_vehicle_config:
@@ -60,30 +58,41 @@ env_config:
     xi_max: 0.7853981633974483
     safe_d: 0.0
     safe_metric: 3.0
+  perception:
+    one_hot_representation:
+      d: 5
+      number: 8
+    one_hot_representation_enhanced:
+      d: 10
+      number: 8
+    lidar_detection_one_hot:
+      d: 5
+    lidar_detection_one_hot_triple:
+      d: 5
   evaluate_mode: false
-  goal_region_bound:
+  generate_goals_config:
     x_min: -30
     x_max: 30
     y_min: -30
     y_max: 30
-  outer_wall_bound:
-    x_min: -50
-    x_max: 50
-    y_min: -50
-    y_max: 50 
+  generate_obstacles_config:
+    x_min: -30
+    x_max: 30
+    y_min: -30
+    y_max: 30
+    number_obstacles: 0
+    max_length: 20
+    min_length: 1.0
+    fixed_number: true
+  
   reward_type: sparse_reward_mod
-  start_region_bound:
-    x_min: 0
-    x_max: 0
-    y_min: 0
-    y_max: 0
-  sucess_goal_reward_sparse: 15
-  sparse_reward_threshold: 0.5
   vehicle_type: three_trailer
-  verbose: false
   jack_knife_penalty: -20
   collision_penalty: -20
+  sparse_reward_threshold: 0.5
+  sucess_goal_reward_sparse: 15
+  verbose: false
   use_rgb: false
-  number_obstacles: 0
-  max_length: 20
-  min_length: 1
+  use_gray: false
+  with_obstacles_info: false #import for model selection
+  observation: original # ways for perception

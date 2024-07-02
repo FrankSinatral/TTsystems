@@ -13,7 +13,7 @@ batch_size: 1024
 start_steps: 1000
 update_after: 1000
 update_every: 2000
-save_freq: 10
+save_freq: 1
 num_test_episodes: 100 # for cluttered env set to 10
 log_dir: 'runs_rl/'
 logging_dir: 'runs_rl/'
@@ -86,10 +86,10 @@ env_config:
     x_max: 30
     y_min: -30
     y_max: 30
-    number_obstacles: 5
+    number_obstacles: 0
     max_length: 20
     min_length: 1.0
-    fixed_number: false
+    fixed_number: true
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer
