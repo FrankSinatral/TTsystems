@@ -13,7 +13,7 @@ import sys
 from tqdm import trange
 from tqdm import tqdm
 import pickle
-
+import gc
 # import core
 # Some of the nn defined here
 import rl_agents.sac.core as core
@@ -764,6 +764,7 @@ class SAC_ASTAR_META_NEW:
                         print("Astar collecting time:", end_time - start_time)
                         encounter_task_list = []
                         astar_results = [] # Add clear astar results
+                        gc.collect()
                 elif self.whether_astar and self.astar_ablation:
                     # TODO: not finished
                     if self.finish_episode_number % 50 == 0:

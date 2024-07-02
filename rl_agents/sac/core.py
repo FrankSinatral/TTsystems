@@ -384,8 +384,8 @@ class SquashedGaussianAttentionActor(nn.Module):
         qkv_input_dim = 2 * state_dim + goal_dim + obstacle_dim
         qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
         
-        self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
-        self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
+        self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
+        self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
         
         self.mu_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
@@ -469,8 +469,8 @@ class AttentionQFunction(nn.Module):
         qkv_input_dim = 2 * state_dim + goal_dim + obstacle_dim
         qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
 
-        self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
-        self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
+        self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
+        self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
         
         self.q_layer = mlp([2 * state_dim + goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
