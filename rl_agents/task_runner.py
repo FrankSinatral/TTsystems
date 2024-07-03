@@ -135,3 +135,24 @@ class TaskRunner:
             print(f"  Number of results: {len(data['results'])}")
         
         return tasks, results
+    
+    def load_specific_astar_results(self, data_dir, index):
+        # 构建符合条件的文件名
+        file_name = f"astar_result_{self.observation_type}_{index}.pkl"
+        file_path = os.path.join(data_dir, file_name)
+        
+        # 检查文件是否存在
+        if not os.path.isfile(file_path):
+            print(f"No file found: {file_name}")
+            return [], []
+        
+        # 加载数据
+        data = joblib.load(file_path)
+        tasks = data['tasks']
+        results = data['results']
+        
+        print(f"Loaded {file_name}:")
+        print(f"  Number of tasks: {len(tasks)}")
+        print(f"  Number of results: {len(results)}")
+        
+        return tasks, results
