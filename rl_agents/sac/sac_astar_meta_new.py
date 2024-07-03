@@ -555,6 +555,7 @@ class SAC_ASTAR_META_NEW:
                 feasible_seed_number += 1
                 o, info = self.test_env.reset(seed=feasible_seed_number)
             finish_episode += 1
+            feasible_seed_number += 1
             terminated, truncated, ep_ret, ep_len = False, False, 0, 0
             
             while not(terminated or truncated):
