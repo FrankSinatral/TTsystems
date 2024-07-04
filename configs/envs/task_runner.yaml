@@ -5,7 +5,7 @@ astar_N_steps: 10
 astar_max_iter: 10
 astar_heuristic_type: 'mix_original'
 astar_batch_size: 1000
-astar_total_batch: 100
+astar_total_batch: 1000
 whether_dataset: false
 save_model_path: 'datasets/data'
 observation_type: lidar_detection_one_hot_triple
