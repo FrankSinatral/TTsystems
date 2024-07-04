@@ -5,7 +5,7 @@ import tractor_trailer_envs as tt_envs
 import matplotlib.pyplot as plt
 import time
 # tt_envs.register_tt_envs()
-
+import os
 def check_finetune_shape(input):
     x, y, yaw, yawt1, yawt2, yawt3 = input
     if abs(yaw - yawt1) <= np.pi/8 and abs(yawt1 - yawt2) <= np.pi/8 and abs(yawt2 - yawt3) <= np.pi/8:
@@ -131,6 +131,7 @@ def find_astar_trajectory(input, goal, obstacles_info, map_vertices, config, per
     map_vertices: given as a list of the four vertices
     return result_dict
     """
+    os.sched_setaffinity(0, range(os.cpu_count() or 1))
     assert config is not None, "planner config should be initialized"
     if config["heuristic_type"] == "traditional":
         planner_version = '0'
