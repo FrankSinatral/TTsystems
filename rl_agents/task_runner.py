@@ -6,7 +6,9 @@ from utils import planner
 import time
 import os
 import joblib
-
+# from multiprocessing import Pool
+# def multi_run_wrapper(args):
+#     return planner.find_astar_trajectory(*args)
 class TaskRunner:
     def __init__(self, 
                  env_fn, 
@@ -64,6 +66,41 @@ class TaskRunner:
             },
             "acceptance_error": 0.5,
         }
+        self.check_planner_config = {
+            "plot_final_path": False,
+            "plot_rs_path": False,
+            "plot_expand_tree": False,
+            "mp_step": self.astar_mp_steps, # Important
+            "N_steps": self.astar_N_steps, # Important
+            "range_steer_set": 20,
+            "max_iter": self.astar_max_iter,
+            "heuristic_type": "traditional",
+            "save_final_plot": False,
+            "controlled_vehicle_config": {
+                "w": 2.0, #[m] width of vehicle
+                "wb": 3.5, #[m] wheel base: rear to front steer
+                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
+                "rf": 4.5, #[m] distance from rear to vehicle front end
+                "rb": 1.0, #[m] distance from rear to vehicle back end
+                "tr": 0.5, #[m] tyre radius
+                "tw": 1.0, #[m] tyre width
+                "rtr": 2.0, #[m] rear to trailer wheel
+                "rtf": 1.0, #[m] distance from rear to trailer front end
+                "rtb": 3.0, #[m] distance from rear to trailer back end
+                "rtr2": 2.0, #[m] rear to second trailer wheel
+                "rtf2": 1.0, #[m] distance from rear to second trailer front end
+                "rtb2": 3.0, #[m] distance from rear to second trailer back end
+                "rtr3": 2.0, #[m] rear to third trailer wheel
+                "rtf3": 1.0, #[m] distance from rear to third trailer front end
+                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
+                "max_steer": 0.6, #[rad] maximum steering angle
+                "v_max": 2.0, #[m/s] maximum velocity 
+                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
+                "safe_metric": 3.0, # the safe distance from the vehicle to obstacle
+                "xi_max": (np.pi) / 4, # jack-knife constraint  
+            },
+            "acceptance_error": 0.5,
+        }
         
     def run(self):
         self.finish_episode_number = 0
@@ -72,7 +109,7 @@ class TaskRunner:
         while self.finish_episode_number // self.astar_batch_size < self.astar_total_batch:
             self.feasible_seed_number += 1
             o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
-            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.planner_config):
+            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
                 self.feasible_seed_number += 1
                 o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
             
@@ -81,7 +118,10 @@ class TaskRunner:
             if len(self.encounter_task_list) >= self.astar_batch_size:
                 print("Start Collecting Buffer from Astar")
                 start_time = time.time()
-                astar_results = Parallel(n_jobs=20)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list)
+                # with Pool(20) as p:
+                #     astar_results = p.map(multi_run_wrapper, list((task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list))
+                astar_results = Parallel(n_jobs=128)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list)
+                # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list]
                 self.save_results(astar_results)
                 end_time = time.time()
                 print("Astar collecting time:", end_time - start_time)
