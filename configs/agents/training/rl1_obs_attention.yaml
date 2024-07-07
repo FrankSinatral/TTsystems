@@ -34,8 +34,8 @@ use_logger: true
 
 
 pretrained: false
-pretrained_itr: 4499999
-pretrained_dir: 'runs_rl/meta-reaching-v0_rl1_lidar_detection_one_hot_three_trailer_10_20240426_082843/'
+pretrained_itr: 499999
+pretrained_dir: 'runs_rl/planning-v0_rl1_obs_attention_three_trailer_10_20240703_165110/'
 
 env_config:
   allow_backward: true
@@ -86,10 +86,10 @@ env_config:
     x_max: 30
     y_min: -30
     y_max: 30
-    number_obstacles: 0
+    number_obstacles: 1
     max_length: 20
     min_length: 1.0
-    fixed_number: true
+    fixed_number: false
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer
