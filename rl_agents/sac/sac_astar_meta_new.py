@@ -854,18 +854,18 @@ class SAC_ASTAR_META_NEW:
                                     if file_read_index_list[j] >= file_pkl_number_list[j]:
                                         file_read_complete_list[j] = True
                                     
-                    else:
-                        print("Start Collecting Buffer from Astar")
-                        start_time = time.time()
-                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list)
-                        # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list]
-                        # Clear the result
-                        self.add_results_to_buffer(encounter_task_list, astar_results)
-                        end_time = time.time()
-                        print("Astar collecting time:", end_time - start_time)
-                        encounter_task_list = []
-                        astar_results = [] # Add clear astar results
-                        gc.collect()
+                        else:
+                            print("Start Collecting Buffer from Astar")
+                            start_time = time.time()
+                            astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list)
+                            # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list]
+                            # Clear the result
+                            self.add_results_to_buffer(encounter_task_list, astar_results)
+                            end_time = time.time()
+                            print("Astar collecting time:", end_time - start_time)
+                            encounter_task_list = []
+                            astar_results = [] # Add clear astar results
+                            gc.collect()
                 elif self.whether_astar and self.astar_ablation:
                     # TODO: not finished
                     if self.finish_episode_number % 50 == 0:
