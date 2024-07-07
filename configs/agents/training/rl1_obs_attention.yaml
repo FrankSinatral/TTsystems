@@ -26,8 +26,11 @@ whether_astar: true
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
-astar_max_iter: 5
+astar_max_iter: 10
 astar_heuristic_type: 'mix_original'
+whether_astar_dataset: true
+astar_dataset_dir: 'datasets/data/'
+
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
 use_logger: true
