@@ -6,6 +6,7 @@ from utils import planner
 import time
 import os
 import joblib
+import pickle
 # from multiprocessing import Pool
 # def multi_run_wrapper(args):
 #     return planner.find_astar_trajectory(*args)
@@ -144,8 +145,9 @@ class TaskRunner:
             "tasks": self.encounter_task_list,
             "results": astar_results
         }
-        
-        joblib.dump(data_to_save, save_path)
+        with open(save_path, 'wb') as f:
+            pickle.dump(data_to_save, f, protocol=pickle.HIGHEST_PROTOCOL)
+        # joblib.dump(data_to_save, save_path)
         print(f"Results saved to {save_path}")
         
         # 清空 encounter_task_list 和 astar_results
@@ -167,7 +169,9 @@ class TaskRunner:
         tasks = []
         for pkl_file in pkl_files:
             file_path = os.path.join(data_dir, pkl_file)
-            data = joblib.load(file_path)
+            with open(file_path, 'rb') as f:
+                data = pickle.load(f)
+            # data = joblib.load(file_path)
             results.extend(data['results'])
             tasks.extend(data['tasks'])
             print(f"Loaded {pkl_file}:")

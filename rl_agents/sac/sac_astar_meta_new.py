@@ -170,16 +170,21 @@ class SAC_ASTAR_META_NEW:
         self.env_name = self.config.get("env_name", 'planning-v0')
         self.pretrained = self.config.get("pretrained", False)
         self.pretrained_itr = self.config.get("pretrained_itr", None)
-        self.pretrianed_dir = self.config.get("pretrained_dir", None)
+        self.pretrained_dir = self.config.get("pretrained_dir", None)
         self.whether_astar = self.config.get("whether_astar", True)
         self.astar_ablation = self.config.get("astar_ablation", False)
         self.astar_mp_steps = self.config.get("astar_mp_steps", 10)
         self.astar_N_steps = self.config.get("astar_N_steps", 10)
         self.astar_max_iter = self.config.get("astar_max_iter", 5)
         self.astar_heuristic_type = self.config.get("astar_heuristic_type", 'traditional')
+        self.whether_astar_dataset = self.config.get("whether_astar_dataset", True)
+        self.astar_dataset_dir = self.config.get("astar_dataset_dir", 'datasets/data/')
+    
         self.whether_dataset = self.config.get("whether_dataset", False)
         self.dataset_path = self.config.get("dataset_path", 'datasets/goal_with_obstacles_info_list.pickle')
         self.env_config = self.config.get("env_config", None)
+        self.whether_fix_number = self.env_config["generate_obstacles_config"].get("fix_number", False)
+        self.number_obstacles = self.env_config["generate_obstacles_config"].get("number_obstacles", 10)
         self.seed = self.config.get("seed", 0)
         self.replay_size = self.config.get("replay_size", int(1e6))
         self.use_logger = self.config.get("use_logger", True)
@@ -326,7 +331,78 @@ class SAC_ASTAR_META_NEW:
             pretrained_file = self.pretrained_dir + 'model_' + itr + '.pth'
             print("Using pretrained model from {}".format(pretrained_file))
             self.load(pretrained_file, whether_load_buffer=False)
-            self.ac_targ = deepcopy(self.ac)    
+            self.ac_targ = deepcopy(self.ac)  
+        
+        self.planner_config = {
+            "plot_final_path": False,
+            "plot_rs_path": False,
+            "plot_expand_tree": False,
+            "mp_step": self.astar_mp_steps,
+            "N_steps": self.astar_N_steps,
+            "range_steer_set": 20,
+            "max_iter": self.astar_max_iter,
+            "heuristic_type": self.astar_heuristic_type,
+            "save_final_plot": False,
+            "controlled_vehicle_config": {
+                "w": 2.0,
+                "wb": 3.5,
+                "wd": 1.4,
+                "rf": 4.5,
+                "rb": 1.0,
+                "tr": 0.5,
+                "tw": 1.0,
+                "rtr": 2.0,
+                "rtf": 1.0,
+                "rtb": 3.0,
+                "rtr2": 2.0,
+                "rtf2": 1.0,
+                "rtb2": 3.0,
+                "rtr3": 2.0,
+                "rtf3": 1.0,
+                "rtb3": 3.0,
+                "max_steer": 0.6,
+                "v_max": 2.0,
+                "safe_d": 0.0,
+                "safe_metric": 3.0,
+                "xi_max": (np.pi) / 4,
+            },
+            "acceptance_error": 0.5,
+        }  
+        self.check_planner_config = {
+            "plot_final_path": False,
+            "plot_rs_path": False,
+            "plot_expand_tree": False,
+            "mp_step": self.astar_mp_steps,
+            "N_steps": self.astar_N_steps,
+            "range_steer_set": 20,
+            "max_iter": self.astar_max_iter,
+            "heuristic_type": "traditional",
+            "save_final_plot": False,
+            "controlled_vehicle_config": {
+                "w": 2.0,
+                "wb": 3.5,
+                "wd": 1.4,
+                "rf": 4.5,
+                "rb": 1.0,
+                "tr": 0.5,
+                "tw": 1.0,
+                "rtr": 2.0,
+                "rtf": 1.0,
+                "rtb": 3.0,
+                "rtr2": 2.0,
+                "rtf2": 1.0,
+                "rtb2": 3.0,
+                "rtr3": 2.0,
+                "rtf3": 1.0,
+                "rtb3": 3.0,
+                "max_steer": 0.6,
+                "v_max": 2.0,
+                "safe_d": 0.0,
+                "safe_metric": 3.0,
+                "xi_max": (np.pi) / 4,
+            },
+            "acceptance_error": 0.5,
+        }
         
         if self.use_logger:
             print("Running off-policy RL algorithm: {}".format(self.algo))
@@ -512,46 +588,12 @@ class SAC_ASTAR_META_NEW:
         success_rate = 0.0
         jack_knife_rate = 0.0
         crash_rate = 0.0
-        planner_config = {
-            "plot_final_path": False,
-            "plot_rs_path": False,
-            "plot_expand_tree": False,
-            "mp_step": self.astar_mp_steps,
-            "N_steps": self.astar_N_steps,
-            "range_steer_set": 20,
-            "max_iter": self.astar_max_iter,
-            "heuristic_type": self.astar_heuristic_type,
-            "save_final_plot": False,
-            "controlled_vehicle_config": {
-                "w": 2.0,
-                "wb": 3.5,
-                "wd": 1.4,
-                "rf": 4.5,
-                "rb": 1.0,
-                "tr": 0.5,
-                "tw": 1.0,
-                "rtr": 2.0,
-                "rtf": 1.0,
-                "rtb": 3.0,
-                "rtr2": 2.0,
-                "rtf2": 1.0,
-                "rtb2": 3.0,
-                "rtr3": 2.0,
-                "rtf3": 1.0,
-                "rtb3": 3.0,
-                "max_steer": 0.6,
-                "v_max": 2.0,
-                "safe_d": 0.0,
-                "safe_metric": 3.0,
-                "xi_max": (np.pi) / 4,
-            },
-            "acceptance_error": 0.5,
-        }
+        
         feasible_seed_number = 0
         finish_episode = 0
         while finish_episode < self.num_test_episodes:
             o, info = self.test_env.reset(seed=feasible_seed_number)
-            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
                 feasible_seed_number += 1
                 o, info = self.test_env.reset(seed=feasible_seed_number)
             finish_episode += 1
@@ -654,42 +696,24 @@ class SAC_ASTAR_META_NEW:
         
         
     def run(self):
+        # Add read the astar trajectory datasets
+        if self.whether_astar and self.whether_astar_dataset:
+            file_dir_list = []
+            file_pkl_number_list = []
+            if self.whether_fix_number:
+                file_read_complete_list = [False]
+                file_read_index_list = [0]
+                file_dir_list.append(os.path.join(self.astar_dataset_dir,"astar_result_obstacle_"+str(self.number_obstacles)+"_pickle"))
+            else: 
+                file_read_complete_list = [False for _ in range(self.number_obstacles+1)]  
+                file_read_index_list = [0 for _ in range(self.number_obstacles+1)]
+                for i in range(self.number_obstacles+1):
+                    file_dir_list.append(os.path.join(self.astar_dataset_dir,"astar_result_obstacle_"+str(i)+"_pickle"))
+            for file_dir in file_dir_list:
+                files = os.listdir(file_dir)
+                file_pkl_number_list.append(len(files))
+        
         # Prepare for interaction with environment
-        planner_config = {
-            "plot_final_path": False,
-            "plot_rs_path": False,
-            "plot_expand_tree": False,
-            "mp_step": self.astar_mp_steps, # Important
-            "N_steps": self.astar_N_steps, # Important
-            "range_steer_set": 20,
-            "max_iter": self.astar_max_iter,
-            "heuristic_type": self.astar_heuristic_type,
-            "save_final_plot": False,
-            "controlled_vehicle_config": {
-                "w": 2.0, #[m] width of vehicle
-                "wb": 3.5, #[m] wheel base: rear to front steer
-                "wd": 1.4, #[m] distance between left-right wheels (0.7 * W)
-                "rf": 4.5, #[m] distance from rear to vehicle front end
-                "rb": 1.0, #[m] distance from rear to vehicle back end
-                "tr": 0.5, #[m] tyre radius
-                "tw": 1.0, #[m] tyre width
-                "rtr": 2.0, #[m] rear to trailer wheel
-                "rtf": 1.0, #[m] distance from rear to trailer front end
-                "rtb": 3.0, #[m] distance from rear to trailer back end
-                "rtr2": 2.0, #[m] rear to second trailer wheel
-                "rtf2": 1.0, #[m] distance from rear to second trailer front end
-                "rtb2": 3.0, #[m] distance from rear to second trailer back end
-                "rtr3": 2.0, #[m] rear to third trailer wheel
-                "rtf3": 1.0, #[m] distance from rear to third trailer front end
-                "rtb3": 3.0, #[m] distance from rear to third trailer back end   
-                "max_steer": 0.6, #[rad] maximum steering angle
-                "v_max": 2.0, #[m/s] maximum velocity 
-                "safe_d": 0.0, #[m] the safe distance from the vehicle to obstacle 
-                "safe_metric": 3.0, # the safe distance from the vehicle to obstacle
-                "xi_max": (np.pi) / 4, # jack-knife constraint  
-            },
-            "acceptance_error": 0.5,
-        }
         total_steps = self.steps_per_epoch * self.epochs
         # ep_ret: sum over all the rewards of an episode
         # ep_len: calculate the timesteps of an episode
@@ -697,7 +721,7 @@ class SAC_ASTAR_META_NEW:
         self.finish_episode_number = 0
         feasible_seed_number = 0
         o, info = self.env.reset(seed=self.seed)
-        while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+        while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
             feasible_seed_number += 1
             o, info = self.env.reset(seed=(self.seed + feasible_seed_number))  
         episode_start_time = time.time()
@@ -705,8 +729,12 @@ class SAC_ASTAR_META_NEW:
             self.add_astar_trajectory = 0
             # to Fasten the code, we first sample the all the start list
             encounter_task_list = []
-            # Save the sufficient information for the planner to solve
-            encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
+            if self.whether_astar_dataset:
+                if all(file_read_complete_list):
+                    encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
+            else:    
+                # Save the sufficient information for the planner to solve
+                encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
             
         ep_ret, ep_len = 0, 0
         # o, ep_ret, ep_len = self.env.reset(), 0, 0
@@ -793,13 +821,44 @@ class SAC_ASTAR_META_NEW:
                 print("Whether Success:", info["is_success"])
                 print("Whether Truncated:", truncated)
                 # Two Strategy for astar
-                if self.whether_astar and not self.astar_ablation:
+                if self.whether_astar and not self.astar_ablation and not self.whether_astar_dataset:
                     # TODO: change for testing
                     if self.finish_episode_number % 1000 == 0: # put this number smaller
                         print("Start Collecting Buffer from Astar")
                         start_time = time.time()
-                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list)
-                        # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], planner_config, self.observation_type) for task in encounter_task_list]
+                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list)
+                        # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list]
+                        # Clear the result
+                        self.add_results_to_buffer(encounter_task_list, astar_results)
+                        end_time = time.time()
+                        print("Astar collecting time:", end_time - start_time)
+                        encounter_task_list = []
+                        astar_results = [] # Add clear astar results
+                        gc.collect()
+                elif self.whether_astar and not self.astar_ablation and self.whether_astar_dataset:
+                    if self.finish_episode_number % 1000 == 0:
+                        if not all(file_read_complete_list):
+                            for j in range(len(file_dir_list)):
+                                file_dir = file_dir_list[j]
+                                file_read_index = file_read_index_list[j]
+                                file_name = os.path.join(file_dir, "astar_result_lidar_detection_one_hot_triple_" + str(file_read_index) + ".pkl")
+                                if not file_read_complete_list[j]:
+                                    with open(file_name, 'rb') as f:
+                                        results = pickle.load(f)
+                                    encounter_task_list = results["tasks"]
+                                    astar_results = results["results"]
+                                    self.add_results_to_buffer(encounter_task_list, astar_results)
+                                    encounter_task_list = []
+                                    astar_results = []
+                                    file_read_index_list[j] += 1
+                                    if file_read_index_list[j] >= file_pkl_number_list[j]:
+                                        file_read_complete_list[j] = True
+                                    
+                    else:
+                        print("Start Collecting Buffer from Astar")
+                        start_time = time.time()
+                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list)
+                        # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in encounter_task_list]
                         # Clear the result
                         self.add_results_to_buffer(encounter_task_list, astar_results)
                         end_time = time.time()
@@ -817,16 +876,18 @@ class SAC_ASTAR_META_NEW:
                             o, info = self.test_env.reset(seed=(self.big_number + self.count_unrelated_task)) # may need to change to test_env
                             self.count_unrelated_task += 1
                             encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
-                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], planner_config, self.env.unwrapped.observation_type) for task in encounter_task_list)
+                        astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.env.unwrapped.observation_type) for task in encounter_task_list)
                         self.add_results_to_buffer(astar_results)
                 feasible_seed_number = 0       
                 o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
-                while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+                while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
                     feasible_seed_number += 1
                     o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
-                if self.whether_astar and not self.astar_ablation:
-                    encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
-                    
+                if self.whether_astar and self.whether_astar_dataset and not self.astar_ablation:
+                    if all(file_read_complete_list):
+                        encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
+                elif self.whether_astar and (not self.whether_astar_dataset) and (not self.astar_ablation):
+                    encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))    
                 episode_start_time = time.time()
                 ep_ret, ep_len = 0, 0
                 if self.whether_her:
