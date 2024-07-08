@@ -8,10 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 # import gym
 import time
 import os
-import os.path as osp
 import sys
-from tqdm import trange
-from tqdm import tqdm
 import pickle
 import gc
 # import core
@@ -657,6 +654,7 @@ class SAC_ASTAR_META_NEW:
         """
         assert len(task_list) == len(result_list), "The length of task_list and result_list should be the same"
         self.add_astar_trajectory = 0
+        step_interval = 10
         for j in range(len(task_list)):
             goal_reached = result_list[j].get("goal_reached")
             task_tuple = task_list[j]
@@ -665,8 +663,8 @@ class SAC_ASTAR_META_NEW:
                 result_dict = result_list[j]
                 obstacles_properties = task_list[j][4] # obstacles_properties
                 trajectory_length = len(result_list[j]["control_list"])
-                for i in range(trajectory_length):
-                    if i == trajectory_length - 1:
+                for i in range(0, trajectory_length, step_interval):
+                    if i == trajectory_length - step_interval:
                         d = True
                         r =  15
                     else:
@@ -675,24 +673,22 @@ class SAC_ASTAR_META_NEW:
                     a = result_dict["control_list"][i]
                     if self.observation_type == "original":
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1]))
-                        o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1]))
+                        o2 = np.concatenate((result_dict["state_list"][i+step_interval], result_dict["state_list"][i+step_interval], task_tuple[1]))
                     elif self.observation_type == "original_with_obstacles_info":
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
-                        o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
+                        o2 = np.concatenate((result_dict["state_list"][i+step_interval], result_dict["state_list"][i+step_interval], task_tuple[1], self.process_obstacles_properties_to_array(obstacles_properties)))
                     elif self.observation_type.endswith("triple"):
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], result_dict["perception_list"][i]))
-                        o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], result_dict["perception_list"][i+1]))
+                        o2 = np.concatenate((result_dict["state_list"][i+step_interval], result_dict["state_list"][i+step_interval], task_tuple[1], result_dict["perception_list"][i+step_interval]))
                     else:
                         o = np.concatenate((result_dict["state_list"][i], result_dict["state_list"][i], task_tuple[1], result_dict["perception_list"][i][:36]))
-                        o2 = np.concatenate((result_dict["state_list"][i+1], result_dict["state_list"][i+1], task_tuple[1], result_dict["perception_list"][i+1][:36]))
+                        o2 = np.concatenate((result_dict["state_list"][i+step_interval], result_dict["state_list"][i+step_interval], task_tuple[1], result_dict["perception_list"][i+step_interval][:36]))
                     if not self.whether_attention:    
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d)
                     else:
                         self.replay_buffer.store(o.astype(np.float32), a.astype(np.float32), r, o2.astype(np.float32), d, obstacles_properties)
         print("Add to Replay Buffer:", self.add_astar_trajectory)
-        print("Total Success Rate:", self.add_astar_trajectory / len(task_list))
-                
-                
+        print("Total Success Rate:", self.add_astar_trajectory / len(task_list))         
         
         
     def run(self):
