@@ -15,21 +15,11 @@ def gym_tt_planning_env_fn(config: dict):
     return gym.make("tt-planning-v0", config=config)
 
 def main():
-    addtional_astar_dataset = False
-    config_filename = "configs/agents/training/rl0.yaml"
-    if addtional_astar_dataset:
-        task_runner_configfile = "configs/envs/task_runner.yaml"
-        with open(task_runner_configfile, 'r') as file:
-            taskrunner_config = yaml.safe_load(file)
-        task_runner = agents.TaskRunner(env_fn=gym_tt_planning_env_fn,
-            config=taskrunner_config)
-        tasks, astar_results = task_runner.load_astar_results("datasets/data")
+    config_filename = "configs/agents/training/rl1_obs_attention.yaml"
     with open(config_filename, 'r') as file:
         config_algo = yaml.safe_load(file)
     agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
         config=config_algo)
-    if addtional_astar_dataset:
-        agent.load_astar_results(tasks, astar_results)
     agent.run()
         
     print(1)
