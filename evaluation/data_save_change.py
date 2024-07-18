@@ -1,3 +1,4 @@
+# this script is for data conversion from joblib to pickle
 import os
 import joblib
 import pickle
@@ -33,6 +34,6 @@ def process_directory(input_dir, output_dir):
                     print(f"An error occurred while processing {input_file_path}: {e}")
 
 if __name__ == "__main__":
-    input_dir = 'datasets/astar_result_obstacle_4'
-    output_dir = 'datasets/astar_result_obstacle_4_pickle'
+    input_dir = 'datasets/astar_result_obstacle_5'
+    output_dir = 'datasets/astar_result_obstacle_5_pickle'
     process_directory(input_dir, output_dir)
