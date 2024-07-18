@@ -38,7 +38,7 @@ use_logger: true
 
 pretrained: true
 pretrained_itr: 1399999
-pretrained_dir: 'datasets/model/'
+pretrained_dir: 'datasets/models/'
 
 env_config:
   allow_backward: true
