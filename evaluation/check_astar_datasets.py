@@ -38,21 +38,18 @@ def convert_tuple_to_dict(task_list):
     
 
 def main():
-    dataset_filename = "datasets/astar_result_obstacle_0_pickle/astar_result_lidar_detection_one_hot_triple_98.pkl"
-    
-    
-    time1 = time.time()
+    # file to check
+    dataset_filename = "datasets/data/astar_result_obstacle_10_pickle/astar_result_lidar_detection_one_hot_triple_113.pkl"
     
     with open(dataset_filename, "rb") as f:
         results = pickle.load(f)
-    time2 = time.time()
-    print("Time: ", time2 - time1)
+    
     task_list = results["tasks"]
     converted_task_list = convert_tuple_to_dict(task_list)  
     astar_result_list = results["results"]
-    with open("configs/envs/tt_planning_v0_eval.yaml", 'r') as file:
+    # initiliaze an env for checking dataset quaility
+    with open("configs/envs/tt_planning_v0_check_datasets.yaml", 'r') as file:
         config = yaml.safe_load(file)
-    # env = tt_envs.TractorTrailerParkingEnv(config)
     env = gym.make("tt-planning-v0", config=config)
     planner_config = {
         "plot_final_path": True,
@@ -96,14 +93,15 @@ def main():
         use_task_list = [converted_task_list[j]]
         env.unwrapped.update_task_list(use_task_list)
         obs, info = env.reset()
-        
+        env.unwrapped.real_render()
         
         astar_result = astar_result_list[j]
         if astar_result.get("goal_reached", False):
             print("Goal reached")
-            state_list = astar_result["state_list"]
+            # state_list = astar_result["state_list"]
             control_list = astar_result["control_list"]
-            if len(control_list) > 400:
+            # plot the success and length > 400 case
+            if len(control_list) > 10:
                 count += 1 
                 print("len of control list:", len(control_list))
                 for i in range(0, len(control_list), 10):
