@@ -36,13 +36,13 @@ dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
 use_logger: true
 
 
-pretrained: false
-pretrained_itr: 499999
-pretrained_dir: 'runs_rl/planning-v0_rl1_obs_attention_three_trailer_10_20240703_165110/'
+pretrained: true
+pretrained_itr: 1399999
+pretrained_dir: 'datasets/model/'
 
 env_config:
   allow_backward: true
-  max_episode_steps: 40
+  max_episode_steps: 80
   N_steps: 10
   controlled_vehicle_config:
     max_steer: 0.6
@@ -89,10 +89,10 @@ env_config:
     x_max: 30
     y_min: -30
     y_max: 30
-    number_obstacles: 1
+    number_obstacles: 10
     max_length: 20
     min_length: 1.0
-    fixed_number: false
+    fixed_number: true
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer
