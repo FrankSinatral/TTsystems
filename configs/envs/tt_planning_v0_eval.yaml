@@ -1,5 +1,5 @@
 allow_backward: true
-max_episode_steps: 40
+max_episode_steps: 60
 N_steps: 10
 controlled_vehicle_config:
   max_steer: 0.6
@@ -24,6 +24,17 @@ controlled_vehicle_config:
   xi_max: 0.7853981633974483
   safe_d: 0.0
   safe_metric: 3.0
+perception:
+  one_hot_representation:
+    d: 5
+    number: 8
+  one_hot_representation_enhanced:
+    d: 10
+    number: 8
+  lidar_detection_one_hot:
+    d: 5
+  lidar_detection_one_hot_triple:
+    d: 5
 evaluate_mode: true
 generate_goals_config:
   x_min: -30
@@ -41,15 +52,15 @@ generate_obstacles_config:
   fixed_number: true
 
 reward_type: sparse_reward_mod
-sucess_goal_reward_sparse: 15
+vehicle_type: three_trailer
 jack_knife_penalty: -20
 collision_penalty: -20
 sparse_reward_threshold: 0.5
-vehicle_type: three_trailer
-
+sucess_goal_reward_sparse: 15
 verbose: false
 use_rgb: false
 use_gray: false
-observation: lidar_detection_one_hot
+with_obstacles_info: false
+observation: original
 
 
