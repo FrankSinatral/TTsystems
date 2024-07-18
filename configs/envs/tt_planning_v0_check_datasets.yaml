@@ -1,0 +1,66 @@
+allow_backward: true
+max_episode_steps: 60
+N_steps: 10
+controlled_vehicle_config:
+  max_steer: 0.6
+  rb: 1.0
+  rf: 4.5
+  rtb: 3.0
+  rtb2: 3.0
+  rtb3: 3.0
+  rtf: 1.0
+  rtf2: 1.0
+  rtf3: 1.0
+  rtr: 2.0
+  rtr2: 2.0
+  rtr3: 2.0
+  safe_d: 0.0
+  tr: 0.5
+  tw: 1.0
+  v_max: 2.0
+  w: 2.0
+  wb: 3.5
+  wd: 1.4
+  xi_max: 0.7853981633974483
+  safe_d: 0.0
+  safe_metric: 3.0
+perception:
+  one_hot_representation:
+    d: 5
+    number: 8
+  one_hot_representation_enhanced:
+    d: 10
+    number: 8
+  lidar_detection_one_hot:
+    d: 5
+  lidar_detection_one_hot_triple:
+    d: 5
+evaluate_mode: true
+generate_goals_config:
+  x_min: -30
+  x_max: 30
+  y_min: -30
+  y_max: 30
+generate_obstacles_config:
+  x_min: -30
+  x_max: 30
+  y_min: -30
+  y_max: 30
+  number_obstacles: 10
+  max_length: 20
+  min_length: 1.0
+  fixed_number: true
+
+reward_type: sparse_reward_mod
+vehicle_type: three_trailer
+jack_knife_penalty: -20
+collision_penalty: -20
+sparse_reward_threshold: 0.5
+sucess_goal_reward_sparse: 15
+verbose: false
+use_rgb: false
+use_gray: false
+with_obstacles_info: false # useless for checking datasets quaility
+observation: original # useless for checking datasets quaility
+
+
