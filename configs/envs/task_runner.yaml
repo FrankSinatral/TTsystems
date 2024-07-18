@@ -7,7 +7,7 @@ astar_heuristic_type: 'mix_original'
 astar_batch_size: 1000
 astar_total_batch: 1000
 whether_dataset: false
-save_model_path: 'datasets/data'
+save_model_path: 'datasets/data/astar_result_obstacle_10_pickle/'
 observation_type: lidar_detection_one_hot_triple
 
 
@@ -60,10 +60,10 @@ env_config:
     x_max: 30
     y_min: -30
     y_max: 30
-    number_obstacles: 5
+    number_obstacles: 10
     max_length: 20
     min_length: 1.0
-    fixed_number: false
+    fixed_number: true
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer
