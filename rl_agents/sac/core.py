@@ -380,13 +380,14 @@ class SquashedGaussianAttentionActor(nn.Module):
         self.obstacle_num = obstacle_num
         self.latent_dim = hidden_sizes[-1]
 
-        self.goal_reaching_net = mlp([2 * state_dim + goal_dim] + list(hidden_sizes), activation, activation)
-        qkv_input_dim = 2 * state_dim + goal_dim + obstacle_dim
+        self.goal_reaching_net = mlp([state_dim + 2 * goal_dim] + list(hidden_sizes), activation, activation)
+        qkv_input_dim = state_dim + 2 * goal_dim + obstacle_dim
         qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
         
         self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
+        # self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation) # TODO: may need to change the layer structure
         
         self.mu_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
@@ -394,8 +395,9 @@ class SquashedGaussianAttentionActor(nn.Module):
 
     def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
         """
-        obs: (batch_size, (2*state_dim + goal_dim)) or (2*state_dim + goal_dim)
+        obs: (batch_size, (state_dim + 2*goal_dim)) or (state_dim + 2*goal_dim)
         obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        TODO: may change to mixture of Gaussian
         """
         if len(obs.shape) == 1:
             squeeze = True
@@ -404,10 +406,10 @@ class SquashedGaussianAttentionActor(nn.Module):
         else:
             squeeze = False
 
-        obs_replicated = obs.unsqueeze(-1).repeat(1, 1, self.obstacle_num) # (batch_size, (2*state_dim + goal_dim), obstacles_num)
+        obs_replicated = obs.unsqueeze(-1).repeat(1, 1, self.obstacle_num) # (batch_size, (state_dim + 2*goal_dim), obstacles_num)
 
         obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
-        combined_obs = torch.cat((obs_replicated, obstacles_data), dim=1) # (batch_size, (2*state_dim + goal_dim + obstacle_dim), obstacles_num)
+        combined_obs = torch.cat((obs_replicated, obstacles_data), dim=1) # (batch_size, (state_dim + 2*goal_dim + obstacle_dim), obstacles_num)
 
         query = self.q_proj(combined_obs.permute(0, 2, 1)) # (batch_size, obstacles_num, latent_dim)
         key = self.k_proj(combined_obs.permute(0, 2, 1)) # (batch_size, obstacles_num, latent_dim)
@@ -423,8 +425,8 @@ class SquashedGaussianAttentionActor(nn.Module):
         attn_weights = F.softmax(scores, dim=-1)
         attn_output = torch.matmul(attn_weights, value) # (batch_size, obstacles_num, latent_dim)
         attn_output = attn_output * mask.permute(0, 2, 1) # (batch_size, obstacles_num, latent_dim)
-        # attn_output = attn_output.sum(dim=1)
         attn_output, _ = attn_output.max(dim=1) # (batch_size, latent_dim)
+        # attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
         goal_reaching_out = self.goal_reaching_net(obs) # (batch_size, hidden_sizes[-1])
         combined_out = torch.cat((goal_reaching_out, attn_output), dim=-1) # (batch_size, latent_dim + hidden_sizes[-1])
 
@@ -466,14 +468,14 @@ class AttentionQFunction(nn.Module):
         self.obstacle_num = obstacle_num
         self.latent_dim = hidden_sizes[-1]
 
-        qkv_input_dim = 2 * state_dim + goal_dim + obstacle_dim
+        qkv_input_dim = state_dim + 2 * goal_dim + obstacle_dim
         qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
 
         self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
         
-        self.q_layer = mlp([2 * state_dim + goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.q_layer = mlp([state_dim + 2 * goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
         self.hidden_size = hidden_sizes[-1]
 
     def forward(self, obs, obstacles, act):

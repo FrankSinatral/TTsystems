@@ -180,7 +180,7 @@ class SAC_ASTAR_META_NEW:
         self.whether_dataset = self.config.get("whether_dataset", False)
         self.dataset_path = self.config.get("dataset_path", 'datasets/goal_with_obstacles_info_list.pickle')
         self.env_config = self.config.get("env_config", None)
-        self.whether_fix_number = self.env_config["generate_obstacles_config"].get("fix_number", False)
+        self.whether_fix_number = self.env_config["generate_obstacles_config"].get("fixed_number", False) # fix a typo
         self.number_obstacles = self.env_config["generate_obstacles_config"].get("number_obstacles", 10)
         self.seed = self.config.get("seed", 0)
         self.replay_size = self.config.get("replay_size", int(1e6))
