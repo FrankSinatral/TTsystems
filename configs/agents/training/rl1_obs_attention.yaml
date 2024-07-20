@@ -36,7 +36,7 @@ dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
 use_logger: true
 
 
-pretrained: true
+pretrained: false
 pretrained_itr: 1399999
 pretrained_dir: 'datasets/models/'
 
