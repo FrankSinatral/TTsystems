@@ -10,7 +10,6 @@ import tractor_trailer_envs as tt_envs
 
 from tractor_trailer_envs import register_tt_envs
 register_tt_envs()
-from config import get_config
 import numpy as np
 import yaml
 import pickle
