@@ -261,7 +261,8 @@ class SAC_ASTAR_META_NEW:
         
         # Create actor-critic module and target networks
         if self.whether_attention:
-            actor_critic = core.AttentionActorCritic # change our model for testing
+            # actor_critic = core.AttentionActorCritic # change our model for testing
+            actor_critic = core.TransformerActorCritic
             self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
         else:
             actor_critic = core.MLPActorCritic
@@ -284,7 +285,7 @@ class SAC_ASTAR_META_NEW:
 
         # Experience buffer
         if self.whether_attention:
-            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=10, size=self.replay_size, device=self.device)
+            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=20, size=self.replay_size, device=self.device) # TODO: obstacle_num change to change core
         else:
             self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
         
@@ -556,7 +557,7 @@ class SAC_ASTAR_META_NEW:
     
     def process_obstacles_properties_to_array(self, input_list):
         """process for mlp with obstacles properties"""
-        array_length = 40
+        array_length = 40 #TODO change the number of obstacles
         result_array = np.zeros(array_length, dtype=np.float32)
         
         # 将input_list中的元素顺次填入result_array中

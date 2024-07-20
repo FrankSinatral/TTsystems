@@ -456,8 +456,6 @@ class SquashedGaussianAttentionActor(nn.Module):
 
         return pi_action, logp_pi
 
-
-
 class AttentionQFunction(nn.Module):
     def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation):
         super().__init__()
@@ -514,6 +512,144 @@ class AttentionQFunction(nn.Module):
         q = self.q_layer(combined_out)
         return torch.squeeze(q, -1)
 
+
+class SquashedGaussianTransformerActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+        
+        self.obs_embedding = nn.Linear(state_dim + 2 * goal_dim, self.latent_dim)
+        self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
+        
+        encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=6)
+        
+        self.mu_layer = nn.Linear(self.latent_dim, act_dim)
+        self.log_std_layer = nn.Linear(self.latent_dim, act_dim)
+        self.act_limit = act_limit
+
+        # Add a special embedding for the first position
+        self.first_pos_embedding = nn.Parameter(torch.zeros(1, self.latent_dim))
+
+    def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
+        """
+        obs: (batch_size, state_dim + 2 * goal_dim) or (state_dim + 2 * goal_dim)
+        obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        """
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+        else:
+            squeeze = False
+        device = obs.device
+        obs_embedded = self.obs_embedding(obs).unsqueeze(0)  # (1, batch_size, latent_dim)
+
+        # Add the first position embedding to the observation embedding
+        obs_embedded = obs_embedded + self.first_pos_embedding.unsqueeze(1)  # (1, batch_size, latent_dim)
+
+        mask = obstacles[:, -1, :].squeeze(1)  # (batch_size, obstacles_num)
+        obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
+
+        obstacles_embedded = self.obstacle_embedding(obstacles_data.permute(2, 0, 1))  # (obstacles_num, batch_size, latent_dim)
+
+        # Combine the embedded observation and obstacles
+        combined_input = torch.cat((obs_embedded, obstacles_embedded), dim=0)  # (1 + obstacles_num, batch_size, latent_dim)
+
+        # Generate attention mask for Transformer
+        attention_mask = torch.cat((torch.zeros(mask.size(0), 1, dtype=torch.bool, device=device), mask == 0), dim=1)  # (batch_size, 1 + obstacles_num)
+        
+        transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
+        transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
+
+        mu = self.mu_layer(transformer_output)
+        log_std = self.log_std_layer(transformer_output)
+        log_std = torch.clamp(log_std, -20, 2)
+        std = torch.exp(log_std)
+
+        if squeeze:
+            mu = mu.squeeze()
+            std = std.squeeze()
+
+        pi_distribution = Normal(mu, std)
+        if deterministic:
+            pi_action = mu
+        else:
+            pi_action = pi_distribution.rsample()
+
+        if with_logprob:
+            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+            logp_pi -= (2 * (torch.log(torch.tensor(2.0)) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
+        else:
+            logp_pi = None
+
+        pi_action = torch.tanh(pi_action)
+        pi_action = self.act_limit * pi_action
+
+        return pi_action, logp_pi
+
+class TransformerQFunction(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+
+        self.obs_embedding = nn.Linear(state_dim + 2 * goal_dim, self.latent_dim)
+        self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
+
+        encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=6)
+
+        self.q_layer = nn.Linear(self.latent_dim + act_dim, 1)
+
+        # Add a special embedding for the first position
+        self.first_pos_embedding = nn.Parameter(torch.zeros(1, self.latent_dim))
+
+    def forward(self, obs, obstacles, act):
+        """
+        obs: (batch_size, state_dim + 2 * goal_dim) or (state_dim + 2 * goal_dim)
+        obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        act: (batch_size, act_dim) or (act_dim)
+        """
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+            act = act.unsqueeze(0)
+        else:
+            squeeze = False
+        device = obs.device
+        obs_embedded = self.obs_embedding(obs).unsqueeze(0)  # (1, batch_size, latent_dim)
+
+        # Add the first position embedding to the observation embedding
+        obs_embedded = obs_embedded + self.first_pos_embedding.unsqueeze(1)  # (1, batch_size, latent_dim)
+
+        mask = obstacles[:, -1, :].squeeze(1)  # (batch_size, obstacles_num)
+        obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
+
+        obstacles_embedded = self.obstacle_embedding(obstacles_data.permute(2, 0, 1))  # (obstacles_num, batch_size, latent_dim)
+
+        # Combine the embedded observation and obstacles
+        combined_input = torch.cat((obs_embedded, obstacles_embedded), dim=0)  # (1 + obstacles_num, batch_size, latent_dim)
+
+        # Generate attention mask for Transformer
+        attention_mask = torch.cat((torch.zeros(mask.size(0), 1, dtype=torch.bool, device=device), mask == 0), dim=1)  # (batch_size, 1 + obstacles_num)
+
+        transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
+        transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
+
+        combined_out = torch.cat([transformer_output, act], dim=-1)  # (batch_size, latent_dim + act_dim)
+        q = self.q_layer(combined_out)  # (batch_size, 1)
+        return q.squeeze(-1)
+    
+
 class MLPActorCritic(nn.Module):
 
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
@@ -555,6 +691,33 @@ class AttentionActorCritic(nn.Module):
         self.q1 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
                                act_dim, hidden_sizes, activation)
         self.q2 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.pi(obs, obstacles, deterministic, False)
+            # I have to change here for GPU
+            return a.cpu().numpy()
+        
+class TransformerActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+                 activation=nn.ReLU):
+        super().__init__()
+
+        obs_dim = observation_space.shape[0]
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+        state_dim = 6
+        goal_dim = 6
+        obstacle_dim = 4 # currently this is fixed
+        obstacle_num = 20
+
+        # build policy and value functions
+        self.pi = SquashedGaussianTransformerActor(state_dim, goal_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = TransformerQFunction(state_dim, goal_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+        self.q2 = TransformerQFunction(state_dim, goal_dim, obstacle_dim, obstacle_num, \
                                act_dim, hidden_sizes, activation)
 
     def act(self, obs, obstacles, deterministic=False):
