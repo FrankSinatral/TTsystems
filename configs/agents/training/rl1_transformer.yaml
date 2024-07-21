@@ -1,0 +1,108 @@
+algo_name: 'rl1_transformer'
+seed: 10
+env_name: 'planning-v0' # remember to switch script
+sac_steps_per_epoch: 50000
+sac_epochs: 100
+replay_size: 1000000 # for cluttered, set to 500000
+gamma: 0.95 # need to adjust to 0.99 when using cluttered env
+polyak: 0.95
+lr: 0.001
+alpha: 0.2
+log_alpha_lr: 0.001
+batch_size: 1024
+start_steps: 1000
+update_after: 1000
+update_every: 2000
+save_freq: 1
+num_test_episodes: 100 # for cluttered env set to 10
+log_dir: 'runs_rl/'
+logging_dir: 'runs_rl/'
+output_fname: 'experiment_document.txt'
+activation: 'ReLU'
+hidden_sizes: [512, 512, 512]
+whether_her: false
+use_auto: true
+whether_astar: true
+astar_ablation: false # true stands for ablation study
+astar_mp_steps: 10
+astar_N_steps: 10
+astar_max_iter: 10
+astar_heuristic_type: 'mix_original'
+whether_astar_dataset: true
+astar_dataset_dir: 'datasets/data/'
+
+whether_dataset: false
+dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
+use_logger: true
+
+
+pretrained: false
+pretrained_itr: 1399999
+pretrained_dir: 'datasets/models/'
+
+env_config:
+  allow_backward: true
+  max_episode_steps: 80
+  N_steps: 10
+  controlled_vehicle_config:
+    max_steer: 0.6
+    rb: 1.0
+    rf: 4.5
+    rtb: 3.0
+    rtb2: 3.0
+    rtb3: 3.0
+    rtf: 1.0
+    rtf2: 1.0
+    rtf3: 1.0
+    rtr: 2.0
+    rtr2: 2.0
+    rtr3: 2.0
+    safe_d: 0.0
+    tr: 0.5
+    tw: 1.0
+    v_max: 2.0
+    w: 2.0
+    wb: 3.5
+    wd: 1.4
+    xi_max: 0.7853981633974483
+    safe_d: 0.0
+    safe_metric: 3.0
+  perception:
+    one_hot_representation:
+      d: 5
+      number: 8
+    one_hot_representation_enhanced:
+      d: 10
+      number: 8
+    lidar_detection_one_hot:
+      d: 5
+    lidar_detection_one_hot_triple:
+      d: 5
+  evaluate_mode: false
+  generate_goals_config:
+    x_min: -30
+    x_max: 30
+    y_min: -30
+    y_max: 30
+  generate_obstacles_config:
+    x_min: -30
+    x_max: 30
+    y_min: -30
+    y_max: 30
+    number_obstacles: 10
+    max_length: 20
+    min_length: 1.0
+    fixed_number: true
+  
+  reward_type: sparse_reward_mod
+  vehicle_type: three_trailer
+  jack_knife_penalty: -20
+  collision_penalty: -20
+  sparse_reward_threshold: 0.5
+  sucess_goal_reward_sparse: 15
+  verbose: false
+  use_rgb: false
+  use_gray: false
+  with_obstacles_info: true #import for model selection
+  observation: original # ways for perception
+  
