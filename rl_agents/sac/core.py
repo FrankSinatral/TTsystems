@@ -386,7 +386,7 @@ class SquashedGaussianAttentionActor(nn.Module):
         
         self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
-        self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
+        self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU) # TODO: take out the relu
         # self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation) # TODO: may need to change the layer structure
         
         self.mu_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
@@ -425,8 +425,9 @@ class SquashedGaussianAttentionActor(nn.Module):
         attn_weights = F.softmax(scores, dim=-1)
         attn_output = torch.matmul(attn_weights, value) # (batch_size, obstacles_num, latent_dim)
         attn_output = attn_output * mask.permute(0, 2, 1) # (batch_size, obstacles_num, latent_dim)
-        attn_output, _ = attn_output.max(dim=1) # (batch_size, latent_dim)
-        # attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
+        # attn_output, _ = attn_output.max(dim=1) # (batch_size, latent_dim)
+        attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
+        # TODO: average
         goal_reaching_out = self.goal_reaching_net(obs) # (batch_size, hidden_sizes[-1])
         combined_out = torch.cat((goal_reaching_out, attn_output), dim=-1) # (batch_size, latent_dim + hidden_sizes[-1])
 
@@ -526,7 +527,7 @@ class SquashedGaussianTransformerActor(nn.Module):
         self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
         
         encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=6)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
         
         self.mu_layer = nn.Linear(self.latent_dim, act_dim)
         self.log_std_layer = nn.Linear(self.latent_dim, act_dim)
@@ -605,7 +606,7 @@ class TransformerQFunction(nn.Module):
         self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
 
         encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=6)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
 
         self.q_layer = nn.Linear(self.latent_dim + act_dim, 1)
 
@@ -617,6 +618,8 @@ class TransformerQFunction(nn.Module):
         obs: (batch_size, state_dim + 2 * goal_dim) or (state_dim + 2 * goal_dim)
         obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
         act: (batch_size, act_dim) or (act_dim)
+        
+        # TODO: act with obs
         """
         if len(obs.shape) == 1:
             squeeze = True

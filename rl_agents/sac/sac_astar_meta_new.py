@@ -285,7 +285,7 @@ class SAC_ASTAR_META_NEW:
 
         # Experience buffer
         if self.whether_attention:
-            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=20, size=self.replay_size, device=self.device) # TODO: obstacle_num change to change core
+            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=10, size=self.replay_size, device=self.device) # TODO: obstacle_num change to change core
         else:
             self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
         
