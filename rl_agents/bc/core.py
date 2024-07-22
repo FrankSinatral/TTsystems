@@ -206,8 +206,9 @@ class SquashedGaussianTransformerActor(nn.Module):
 
             return pi_action, logp_pi
         else:
-            # Compute log_prob for given actions
-            unsquashed_actions = torch.atanh(actions / self.act_limit)
+            # Clip actions to avoid inf values in atanh
+            clipped_actions = torch.clamp(actions / self.act_limit, -1 + self.epsilon, 1 - self.epsilon)
+            unsquashed_actions = torch.atanh(clipped_actions) # reverse the squashing
             logp_pi = pi_distribution.log_prob(unsquashed_actions).sum(axis=-1)
             logp_pi -= (2 * (torch.log(torch.tensor(2.0)) - actions - F.softplus(-2 * actions))).sum(axis=-1)
             return actions, logp_pi

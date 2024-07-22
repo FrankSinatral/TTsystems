@@ -455,9 +455,11 @@ class BC:
         epochs = max(file_pkl_number_list)
         current_step = 0
         for epoch in range(epochs):
+            print("Prepare Datasets")
             datas, file_read_complete_list, file_read_index_list = self.load_datasets(file_dir_list, file_pkl_number_list, file_read_complete_list, file_read_index_list)
             datasets = AstarPlanningDataset(datas)
             dataloader = torch.utils.data.DataLoader(datasets, batch_size=self.batch_size, shuffle=True)
+            print("Finish Prepare Datasets")
             for step in range(self.steps_per_epoch):
                 total_loss = 0
                 for batch in dataloader:
@@ -470,7 +472,9 @@ class BC:
                 print(f"Epoch {epoch + 1}/{epochs}, Step {step + 1}/{self.steps_per_epoch}, Loss: {average_loss}")
                 if current_step % self.save_freq == 0:
                     # Test agent at the end of each epoch
+                    print("Start testing")
                     self.test_agent(current_step)
+                    print("Finish testing")
                     if not os.path.exists(self.save_model_path):
                         os.makedirs(self.save_model_path)
                     self.save_model(self.save_model_path +'/model_' + str(current_step) + '.pth')
