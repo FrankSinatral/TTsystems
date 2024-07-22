@@ -147,6 +147,7 @@ class SquashedGaussianTransformerActor(nn.Module):
         self.mu_layer = nn.Linear(self.latent_dim, act_dim)
         self.log_std_layer = nn.Linear(self.latent_dim, act_dim)
         self.act_limit = act_limit
+        self.epsilon = 1e-6  # Small value to avoid inf
 
     def forward(self, obs, obstacles, actions=None, deterministic=False, with_logprob=True):
         """
