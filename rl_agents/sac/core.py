@@ -534,7 +534,7 @@ class SquashedGaussianTransformerActor(nn.Module):
         self.act_limit = act_limit
 
         # Add a special embedding for the first position
-        self.first_pos_embedding = nn.Parameter(torch.zeros(1, self.latent_dim))
+        # self.first_pos_embedding = nn.Parameter(torch.zeros(1, self.latent_dim))
 
     def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
         """
@@ -551,7 +551,7 @@ class SquashedGaussianTransformerActor(nn.Module):
         obs_embedded = self.obs_embedding(obs).unsqueeze(0)  # (1, batch_size, latent_dim)
 
         # Add the first position embedding to the observation embedding
-        obs_embedded = obs_embedded + self.first_pos_embedding.unsqueeze(1)  # (1, batch_size, latent_dim)
+        # obs_embedded = obs_embedded # + self.first_pos_embedding.unsqueeze(1)  # (1, batch_size, latent_dim)
 
         mask = obstacles[:, -1, :].squeeze(1)  # (batch_size, obstacles_num)
         obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
@@ -602,16 +602,16 @@ class TransformerQFunction(nn.Module):
         self.obstacle_num = obstacle_num
         self.latent_dim = hidden_sizes[-1]
 
-        self.obs_embedding = nn.Linear(state_dim + 2 * goal_dim, self.latent_dim)
+        self.obs_with_act_embedding = nn.Linear(state_dim + 2 * goal_dim + act_dim, self.latent_dim)
         self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
 
         encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
 
-        self.q_layer = nn.Linear(self.latent_dim + act_dim, 1)
+        self.q_layer = nn.Linear(self.latent_dim, 1)
 
         # Add a special embedding for the first position
-        self.first_pos_embedding = nn.Parameter(torch.zeros(1, self.latent_dim))
+        # self.first_pos_embedding = nn.Parameter(torch.zeros(1, self.latent_dim))
 
     def forward(self, obs, obstacles, act):
         """
@@ -629,10 +629,11 @@ class TransformerQFunction(nn.Module):
         else:
             squeeze = False
         device = obs.device
-        obs_embedded = self.obs_embedding(obs).unsqueeze(0)  # (1, batch_size, latent_dim)
+        obs_with_act = torch.cat([obs, act], dim=-1)
+        obs_embedded = self.obs_with_act_embedding(obs_with_act).unsqueeze(0)  # (1, batch_size, latent_dim)
 
         # Add the first position embedding to the observation embedding
-        obs_embedded = obs_embedded + self.first_pos_embedding.unsqueeze(1)  # (1, batch_size, latent_dim)
+        # obs_embedded = obs_embedded + self.first_pos_embedding.unsqueeze(1)  # (1, batch_size, latent_dim)
 
         mask = obstacles[:, -1, :].squeeze(1)  # (batch_size, obstacles_num)
         obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
@@ -648,8 +649,8 @@ class TransformerQFunction(nn.Module):
         transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
         transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
 
-        combined_out = torch.cat([transformer_output, act], dim=-1)  # (batch_size, latent_dim + act_dim)
-        q = self.q_layer(combined_out)  # (batch_size, 1)
+        # combined_out = torch.cat([transformer_output, act], dim=-1)  # (batch_size, latent_dim + act_dim)
+        q = self.q_layer(transformer_output)  # (batch_size, 1)
         return q.squeeze(-1)
     
 
