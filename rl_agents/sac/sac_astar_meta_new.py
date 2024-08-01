@@ -261,8 +261,10 @@ class SAC_ASTAR_META_NEW:
         
         # Create actor-critic module and target networks
         if self.whether_attention:
-            # actor_critic = core.AttentionActorCritic # change our model for testing
-            actor_critic = core.TransformerActorCritic
+            if config["algo_name"].endswith("obs_attention"):
+                actor_critic = core.AttentionActorCritic # change our model for testing
+            else:   
+                actor_critic = core.TransformerActorCritic
             self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
         else:
             actor_critic = core.MLPActorCritic
@@ -285,7 +287,7 @@ class SAC_ASTAR_META_NEW:
 
         # Experience buffer
         if self.whether_attention:
-            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=10, size=self.replay_size, device=self.device) # TODO: obstacle_num change to change core
+            self.replay_buffer = ReplayBuffer_With_Obstacles(obs_dim=self.obs_dim, act_dim=self.act_dim, obstacle_dim=4, obstacle_num=20, size=self.replay_size, device=self.device) # TODO: obstacle_num change to change core
         else:
             self.replay_buffer = ReplayBuffer(obs_dim=self.obs_dim, act_dim=self.act_dim, size=self.replay_size, device=self.device)
         
@@ -717,10 +719,12 @@ class SAC_ASTAR_META_NEW:
         # reset this value every time we use run
         self.finish_episode_number = 0
         feasible_seed_number = 0
+        print("Start Finding a New Feasible Task")
         o, info = self.env.reset(seed=self.seed)
         while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
             feasible_seed_number += 1
             o, info = self.env.reset(seed=(self.seed + feasible_seed_number))  
+        print("Finish Finding a New Feasible Task with id:", self.seed  + feasible_seed_number)
         episode_start_time = time.time()
         if self.whether_astar and not self.astar_ablation:
             self.add_astar_trajectory = 0
@@ -803,8 +807,7 @@ class SAC_ASTAR_META_NEW:
             # most recent observation!
             o = o2
 
-            # End of trajectory handling
-                
+            # End of trajectory handling  
             if terminated or truncated:
                 # self.logger.store(EpRet=ep_ret, EpLen=ep_len)
                 # Fank: next you give a brand new case
@@ -835,6 +838,7 @@ class SAC_ASTAR_META_NEW:
                 elif self.whether_astar and not self.astar_ablation and self.whether_astar_dataset:
                     if self.finish_episode_number % 1000 == 0:
                         if not all(file_read_complete_list):
+                            print("Loading Astar Datasets from pkl")
                             for j in range(len(file_dir_list)):
                                 file_dir = file_dir_list[j]
                                 file_read_index = file_read_index_list[j]
@@ -876,12 +880,15 @@ class SAC_ASTAR_META_NEW:
                         astar_results = Parallel(n_jobs=-1)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.env.unwrapped.observation_type) for task in encounter_task_list)
                         self.add_results_to_buffer(astar_results)
                 feasible_seed_number = 0       
+                print("Start Finding a New Feasible Task from id:", self.seed + t + feasible_seed_number)
                 o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
                 while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
                     feasible_seed_number += 1
                     o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
+                print("Finish Finding a New Feasible Task with id:", self.seed + t + feasible_seed_number)
                 if self.whether_astar and self.whether_astar_dataset and not self.astar_ablation:
                     if all(file_read_complete_list):
+                        print("Loading Finish, Start Collecting New Tasks")
                         encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
                 elif self.whether_astar and (not self.whether_astar_dataset) and (not self.astar_ablation):
                     encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))    
@@ -911,7 +918,9 @@ class SAC_ASTAR_META_NEW:
                 if (epoch % self.save_freq == 0) or (epoch == self.epochs):
                     if not os.path.exists(self.save_model_path):
                         os.makedirs(self.save_model_path)
+                    print("start saving model")
                     self.save(self.save_model_path +'/model_' + str(t) + '.pth')
+                    print("done saving model")
                     # pass
                     # self.logger.save_state({'env': self.env}, itr=epoch)
                 print("start testing")
