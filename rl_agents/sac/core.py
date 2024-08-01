@@ -386,7 +386,7 @@ class SquashedGaussianAttentionActor(nn.Module):
         
         self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
-        self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU) # TODO: take out the relu
+        self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation) # TODO: take out the relu
         # self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation) # TODO: may need to change the layer structure
         
         self.mu_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
@@ -426,7 +426,8 @@ class SquashedGaussianAttentionActor(nn.Module):
         attn_output = torch.matmul(attn_weights, value) # (batch_size, obstacles_num, latent_dim)
         attn_output = attn_output * mask.permute(0, 2, 1) # (batch_size, obstacles_num, latent_dim)
         # attn_output, _ = attn_output.max(dim=1) # (batch_size, latent_dim)
-        attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
+        # attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
+        attn_output = attn_output.mean(dim=1) # TODO: this way you have to take out ReLU
         # TODO: average
         goal_reaching_out = self.goal_reaching_net(obs) # (batch_size, hidden_sizes[-1])
         combined_out = torch.cat((goal_reaching_out, attn_output), dim=-1) # (batch_size, latent_dim + hidden_sizes[-1])
@@ -467,14 +468,14 @@ class AttentionQFunction(nn.Module):
         self.obstacle_num = obstacle_num
         self.latent_dim = hidden_sizes[-1]
 
-        qkv_input_dim = state_dim + 2 * goal_dim + obstacle_dim
+        qkv_input_dim = state_dim + 2 * goal_dim + obstacle_dim + act_dim
         qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
 
         self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
         
-        self.q_layer = mlp([state_dim + 2 * goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.q_layer = mlp([state_dim + 2 * goal_dim + act_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
         self.hidden_size = hidden_sizes[-1]
 
     def forward(self, obs, obstacles, act):
@@ -486,11 +487,14 @@ class AttentionQFunction(nn.Module):
             act = act.unsqueeze(0)
         else:
             squeeze = False
-
-        obs_replicated = obs.unsqueeze(-1).repeat(1, 1, self.obstacle_num)
+            
+        # Concatenate obs and act
+        obs_act = torch.cat([obs, act], dim=-1)
+        
+        obs_act_replicated = obs_act.unsqueeze(-1).repeat(1, 1, self.obstacle_num)
 
         obstacles_data = obstacles[:, :self.obstacle_dim, :]
-        combined_obs = torch.cat((obs_replicated, obstacles_data), dim=1)
+        combined_obs = torch.cat((obs_act_replicated, obstacles_data), dim=1)
 
         query = self.q_proj(combined_obs.permute(0, 2, 1))
         key = self.k_proj(combined_obs.permute(0, 2, 1))
@@ -507,9 +511,10 @@ class AttentionQFunction(nn.Module):
         attn_output = torch.matmul(attn_weights, value)
         attn_output = attn_output * mask.permute(0, 2, 1)
 
-        attn_output, _ = attn_output.max(dim=1)
+        # attn_output, _ = attn_output.max(dim=1)
+        attn_output = attn_output.mean(dim=1)
 
-        combined_out = torch.cat([obs, attn_output, act], dim=-1)
+        combined_out = torch.cat([obs, act, attn_output], dim=-1)
         q = self.q_layer(combined_out)
         return torch.squeeze(q, -1)
 
