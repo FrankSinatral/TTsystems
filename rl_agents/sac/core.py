@@ -426,8 +426,8 @@ class SquashedGaussianAttentionActor(nn.Module):
         attn_output = torch.matmul(attn_weights, value) # (batch_size, obstacles_num, latent_dim)
         attn_output = attn_output * mask.permute(0, 2, 1) # (batch_size, obstacles_num, latent_dim)
         # attn_output, _ = attn_output.max(dim=1) # (batch_size, latent_dim)
-        # attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
-        attn_output = attn_output.mean(dim=1) # TODO: this way you have to take out ReLU
+        attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
+        # attn_output = attn_output.mean(dim=1) # TODO: this way you have to take out ReLU
         # TODO: average
         goal_reaching_out = self.goal_reaching_net(obs) # (batch_size, hidden_sizes[-1])
         combined_out = torch.cat((goal_reaching_out, attn_output), dim=-1) # (batch_size, latent_dim + hidden_sizes[-1])
@@ -512,7 +512,7 @@ class AttentionQFunction(nn.Module):
         attn_output = attn_output * mask.permute(0, 2, 1)
 
         # attn_output, _ = attn_output.max(dim=1)
-        attn_output = attn_output.mean(dim=1)
+        attn_output = attn_output.sum(dim=1)
 
         combined_out = torch.cat([obs, act, attn_output], dim=-1)
         q = self.q_layer(combined_out)
