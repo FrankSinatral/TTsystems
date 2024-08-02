@@ -475,7 +475,7 @@ class AttentionQFunction(nn.Module):
         self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
         self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
         
-        self.q_layer = mlp([state_dim + 2 * goal_dim + act_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.q_layer = mlp([state_dim + 2 * goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
         self.hidden_size = hidden_sizes[-1]
 
     def forward(self, obs, obstacles, act):
