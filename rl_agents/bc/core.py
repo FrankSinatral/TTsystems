@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.normal import Normal
+import torch.distributions as D
 
 # For ResNet agent
 import random
@@ -211,7 +212,7 @@ class SquashedGaussianTransformerActor(nn.Module):
             clipped_actions = torch.clamp(actions / self.act_limit, -1 + self.epsilon, 1 - self.epsilon)
             unsquashed_actions = torch.atanh(clipped_actions) # reverse the squashing
             logp_pi = pi_distribution.log_prob(unsquashed_actions).sum(axis=-1)
-            logp_pi -= (2 * (torch.log(torch.tensor(2.0)) - actions - F.softplus(-2 * actions))).sum(axis=-1)
+            logp_pi -= (2 * (torch.log(torch.tensor(2.0)) - unsquashed_actions - F.softplus(-2 * unsquashed_actions))).sum(axis=-1)
             return actions, logp_pi
 
     def compute_bc_loss(self, obs, obstacles, actions):
@@ -312,6 +313,108 @@ class SquashedGaussianAttentionActor(nn.Module):
             unsquashed_actions = torch.atanh(clipped_actions) # reverse the squashing
             logp_pi = pi_distribution.log_prob(unsquashed_actions).sum(axis=-1)
             logp_pi -= (2 * (np.log(2) - actions - F.softplus(-2 * actions))).sum(axis=-1)
+            return actions, logp_pi
+
+    def compute_bc_loss(self, obs, obstacles, actions):
+        _, logp_pi = self.forward(obs, obstacles, actions)
+        bc_loss = -logp_pi.mean()
+        return bc_loss
+    
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.forward(obs, obstacles, deterministic=deterministic)
+        return a.cpu().numpy()
+
+class SquashedGaussianMixtureTransformerActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, num_components=5):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+        self.num_components = num_components
+        self.act_dim = act_dim 
+        
+        self.obs_embedding = nn.Linear(state_dim + 2 * goal_dim, self.latent_dim)
+        self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
+        
+        encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
+        
+        self.mu_layer = nn.Linear(self.latent_dim, act_dim * num_components)
+        self.log_std_layer = nn.Linear(self.latent_dim, act_dim * num_components)
+        self.logits_layer = nn.Linear(self.latent_dim, num_components)
+        self.act_limit = act_limit
+        self.epsilon = 1e-6  # Small value to avoid inf
+
+    def forward(self, obs, obstacles, actions=None, deterministic=False, with_logprob=True):
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+            if actions is not None:
+                actions = actions.unsqueeze(0)
+        else:
+            squeeze = False
+        device = obs.device
+        obs_embedded = self.obs_embedding(obs).unsqueeze(0)  # (1, batch_size, latent_dim)
+
+        mask = obstacles[:, -1, :].squeeze(1)  # (batch_size, obstacles_num)
+        obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
+
+        obstacles_embedded = self.obstacle_embedding(obstacles_data.permute(2, 0, 1))  # (obstacles_num, batch_size, latent_dim)
+
+        # Combine the embedded observation and obstacles
+        combined_input = torch.cat((obs_embedded, obstacles_embedded), dim=0)  # (1 + obstacles_num, batch_size, latent_dim)
+
+        # Generate attention mask for Transformer
+        attention_mask = torch.cat((torch.zeros(mask.size(0), 1, dtype=torch.bool, device=device), mask == 0), dim=1)  # (batch_size, 1 + obstacles_num)
+        
+        transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
+        transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
+
+        mu = self.mu_layer(transformer_output).view(-1, self.num_components, self.act_dim) # (batch_size, num_components, act_dim)
+        log_std = self.log_std_layer(transformer_output).view(-1, self.num_components, self.act_dim)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std) # (batch_size, num_components, act_dim)
+
+        logits = self.logits_layer(transformer_output)  # (batch_size, num_components)
+        if squeeze:
+            mu = mu.squeeze()
+            std = std.squeeze()
+            logits = logits.squeeze()
+        
+        compo = Normal(loc=mu, scale=std)
+        compo = D.Independent(compo, 1)
+        mix = D.Categorical(logits=logits)
+        gmm =D.MixtureSameFamily(
+            mixture_distribution=mix, component_distribution=compo
+        )
+
+        if actions is None:
+            if deterministic:
+                pi_action = mu.mean(dim=0)
+            else:
+                pi_action = gmm.sample()
+
+            if with_logprob:
+                # 计算总的对数概率
+                logp_pi = gmm.log_prob(pi_action)
+                logp_pi = logp_pi -  (2 * (torch.log(torch.tensor(2.0)) - pi_action - F.softplus(-2 * pi_action))).sum(axis=-1) 
+            else:
+                logp_pi = None
+
+            pi_action = torch.tanh(pi_action)
+            pi_action = self.act_limit * pi_action
+
+            return pi_action, logp_pi
+        else:
+            # Clip actions to avoid inf values in atanh
+            clipped_actions = torch.clamp(actions / self.act_limit, -1 + self.epsilon, 1 - self.epsilon)
+            unsquashed_actions = torch.atanh(clipped_actions) # reverse the squashing
+            logp_pi = gmm.log_prob(unsquashed_actions)
+            logp_pi = logp_pi - (2 * (torch.log(torch.tensor(2.0)) - unsquashed_actions - F.softplus(-2 * unsquashed_actions))).sum(axis=-1)
             return actions, logp_pi
 
     def compute_bc_loss(self, obs, obstacles, actions):

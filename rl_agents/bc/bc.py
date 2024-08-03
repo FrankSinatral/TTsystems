@@ -150,6 +150,9 @@ class BC:
         self.actor = core.SquashedGaussianTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                          act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                          activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
+        # self.actor = core.SquashedGaussianMixtureTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+        #                                                  act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+        #                                                  activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=self.lr)
         
         
