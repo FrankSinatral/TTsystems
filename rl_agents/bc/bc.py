@@ -69,12 +69,11 @@ class BC:
         self.pretrained_itr = self.config.get("pretrained_itr", None)
         self.pretrained_dir = self.config.get("pretrained_dir", None)
         
-        self.astar_ablation = self.config.get("astar_ablation", False)
+        
         self.astar_mp_steps = self.config.get("astar_mp_steps", 10)
         self.astar_N_steps = self.config.get("astar_N_steps", 10)
         self.astar_max_iter = self.config.get("astar_max_iter", 5)
         self.astar_heuristic_type = self.config.get("astar_heuristic_type", 'traditional')
-        self.whether_astar_dataset = self.config.get("whether_astar_dataset", True)
         self.astar_dataset_dir = self.config.get("astar_dataset_dir", 'datasets/data/')
     
         self.whether_dataset = self.config.get("whether_dataset", False)
@@ -149,14 +148,23 @@ class BC:
         self.env.action_space.seed(self.seed)
         
         if self.nn_version == "1":
+            # fank version
             self.actor = core.SquashedGaussianMixtureTransformerActorVersion1(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                          act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                          activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
-        else:
+        elif self.nn_version == "2":
+            # rzz version
             self.actor = core.SquashedGaussianMixtureTransformerActorVersion2(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                             act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                             activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type).to(self.device)
-        
+        elif self.nn_version == "3":
+            self.actor = core.SquashedGaussianAttentionActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+                                                            activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type).to(self.device)
+        else:
+            self.actor = core.SquashedGaussianTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+                                                            activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=self.lr)
         
         
@@ -174,11 +182,7 @@ class BC:
             self.logger.log('\nNumber of parameters: \t actor: %d\n'%var_counts)
         
 
-        # Fank: whether using astar as our expert   
-        # add a ablation
-        if self.astar_ablation:
-            self.big_number = int(1e9)
-            self.count_unrelated_task = 0
+        
         self.finish_episode_number = 0
         
         if self.pretrained == True:
