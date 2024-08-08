@@ -80,10 +80,12 @@ class BC:
         self.whether_dataset = self.config.get("whether_dataset", False)
         self.dataset_path = self.config.get("dataset_path", 'datasets/goal_with_obstacles_info_list.pickle')
         self.env_config = self.config.get("env_config", None)
-        self.whether_fix_number = self.env_config["generate_obstacles_config"].get("fixed_number", False) # fix a typo
+        self.whether_fix_number = self.config.get("fixed_number", False) # fix a typo
         self.number_obstacles = self.env_config["generate_obstacles_config"].get("number_obstacles", 10)
         self.seed = self.config.get("seed", 0)
         self.use_logger = self.config.get("use_logger", True)
+        self.pooling_type = self.config.get("pooling_type", "average")
+        self.nn_version = self.config.get("nn_version", "1")
         self.device = device
         
         
@@ -146,13 +148,15 @@ class BC:
         # Fank: only need to seed action space
         self.env.action_space.seed(self.seed)
         
-        
-        self.actor = core.SquashedGaussianTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+        if self.nn_version == "1":
+            self.actor = core.SquashedGaussianMixtureTransformerActorVersion1(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                          act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                          activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
-        # self.actor = core.SquashedGaussianMixtureTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
-        #                                                  act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
-        #                                                  activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
+        else:
+            self.actor = core.SquashedGaussianMixtureTransformerActorVersion2(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+                                                            activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type).to(self.device)
+        
         self.actor_optimizer = Adam(self.actor.parameters(), lr=self.lr)
         
         

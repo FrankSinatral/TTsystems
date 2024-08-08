@@ -72,6 +72,52 @@ def count_vars(module):
 LOG_STD_MAX = 2
 LOG_STD_MIN = -20
 
+class GMMPolicyHead(nn.Module):
+    def __init__(self, latent_dim, act_dim, num_components):
+        super().__init__()
+        self.num_components = num_components
+        self.act_dim = act_dim
+        self.mu_layer = nn.Linear(latent_dim, act_dim * num_components)
+        self.log_std_layer = nn.Linear(latent_dim, act_dim * num_components)
+        self.logits_layer = nn.Linear(latent_dim, num_components)
+        self.epsilon = 1e-6  # Small value to avoid inf
+    
+    def forward(self, x, deterministic=False, with_logprob=True, actions=None, act_limit=1.0):
+        """x: (batch_size, latent_dim)"""
+        mu = self.mu_layer(x).view(-1, self.num_components, self.act_dim) # (batch_size, num_components, act_dim)
+        log_std = self.log_std_layer(x).view(-1, self.num_components, self.act_dim) # (batch_size, num_components, act_dim)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        logits = self.logits_layer(x)
+        
+        compo = Normal(loc=mu, scale=std)
+        compo = D.Independent(compo, 1)
+        mix = D.Categorical(logits=logits)
+        gmm = D.MixtureSameFamily(mixture_distribution=mix, component_distribution=compo)
+
+        if actions is None:
+            if deterministic:
+                pi_action = gmm.mean
+            else:
+                pi_action = gmm.sample()
+            
+            if with_logprob:
+                logp_pi = gmm.log_prob(pi_action)
+                logp_pi = logp_pi - (2 * (torch.log(torch.tensor(2.0)) - pi_action - F.softplus(-2 * pi_action))).sum(axis=-1)
+            else:
+                logp_pi = None
+
+            pi_action = torch.tanh(pi_action)
+            pi_action = act_limit * pi_action
+
+            return pi_action, logp_pi
+        else:
+            clipped_actions = torch.clamp(actions / act_limit, -1 + self.epsilon, 1 - self.epsilon)
+            unsquashed_actions = torch.atanh(clipped_actions)
+            logp_pi = gmm.log_prob(unsquashed_actions)
+            logp_pi = logp_pi - (2 * (torch.log(torch.tensor(2.0)) - unsquashed_actions - F.softplus(-2 * unsquashed_actions))).sum(axis=-1)
+            return actions, logp_pi
+
 class SquashedGaussianMLPActor(nn.Module):
 
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
@@ -324,9 +370,73 @@ class SquashedGaussianAttentionActor(nn.Module):
         with torch.no_grad():
             a, _ = self.forward(obs, obstacles, deterministic=deterministic)
         return a.cpu().numpy()
-
-class SquashedGaussianMixtureTransformerActor(nn.Module):
+    
+class SquashedGaussianMixtureTransformerActorVersion1(nn.Module):
     def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, num_components=5):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+        self.act_limit = act_limit
+        
+        self.obs_embedding = nn.Linear(state_dim + 2 * goal_dim, self.latent_dim)
+        self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
+        
+        encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
+        
+        self.gmm_policy_head = GMMPolicyHead(self.latent_dim, act_dim, num_components)
+
+    def forward(self, observations, obstacles, actions=None, deterministic=False, with_logprob=True):
+        if len(observations.shape) == 1:
+            squeeze = True
+            observations = observations.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+            if actions is not None:
+                actions = actions.unsqueeze(0)
+        else:
+            squeeze = False
+
+        device = observations.device
+        observations_embedded = self.obs_embedding(observations).unsqueeze(0)  # (1, batch_size, latent_dim)
+
+        mask = obstacles[:, -1, :]  # (batch_size, obstacles_num)
+        obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
+
+        obstacles_embedded = self.obstacle_embedding(obstacles_data.permute(2, 0, 1))  # (obstacles_num, batch_size, latent_dim)
+
+        combined_input = torch.cat((observations_embedded, obstacles_embedded), dim=0)  # (1 + obstacles_num, batch_size, latent_dim)
+
+        attention_mask = torch.cat((torch.zeros(mask.size(0), 1, dtype=torch.bool, device=device), mask == 0), dim=1)  # (batch_size, 1 + obstacles_num)
+        
+        transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
+        transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
+
+        pi_action, logp_pi = self.gmm_policy_head(transformer_output, deterministic, with_logprob, actions, self.act_limit)
+        
+        if squeeze:
+            pi_action = pi_action.squeeze()
+            if logp_pi is not None:
+                logp_pi = logp_pi.squeeze()
+        
+        return pi_action, logp_pi
+
+    def compute_bc_loss(self, obs, obstacles, actions):
+        _, logp_pi = self.forward(obs, obstacles, actions)
+        bc_loss = -logp_pi.mean()
+        return bc_loss
+    
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.forward(obs, obstacles, deterministic=deterministic)
+        return a.cpu().numpy()   
+
+
+    
+class SquashedGaussianMixtureTransformerActorVersion2(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, num_components=5, pooling_type="average"):
         super().__init__()
         self.state_dim = state_dim
         self.goal_dim = goal_dim
@@ -335,87 +445,91 @@ class SquashedGaussianMixtureTransformerActor(nn.Module):
         self.latent_dim = hidden_sizes[-1]
         self.num_components = num_components
         self.act_dim = act_dim 
+        self.pooling_type = pooling_type
         
-        self.obs_embedding = nn.Linear(state_dim + 2 * goal_dim, self.latent_dim)
-        self.obstacle_embedding = nn.Linear(obstacle_dim, self.latent_dim)
         
+        self.goal_reaching_net = mlp([state_dim + 2 * goal_dim] + list(hidden_sizes), activation, activation)
+        self.observation_with_obstacle_embedding = nn.Linear(state_dim + 2 * goal_dim + obstacle_dim, self.latent_dim)
         encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=8)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
         
-        self.mu_layer = nn.Linear(self.latent_dim, act_dim * num_components)
-        self.log_std_layer = nn.Linear(self.latent_dim, act_dim * num_components)
-        self.logits_layer = nn.Linear(self.latent_dim, num_components)
+        self.gmm_policy_head = GMMPolicyHead(2 * self.latent_dim, act_dim, num_components)
         self.act_limit = act_limit
-        self.epsilon = 1e-6  # Small value to avoid inf
 
-    def forward(self, obs, obstacles, actions=None, deterministic=False, with_logprob=True):
-        if len(obs.shape) == 1:
+    def forward(self, observations, obstacles, actions=None, deterministic=False, with_logprob=True):
+        """
+        observations: vehicle state and goal position (batch_size, state_dim + 2 * goal_dim) or (state_dim + 2 * goal_dim,)
+        obstacles: obstacle features with masking (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        actions: if None: output actions, else: compute log_prob for given actions (batch_size, act_dim)
+        """
+        if len(observations.shape) == 1:
             squeeze = True
-            obs = obs.unsqueeze(0)
+            observations = observations.unsqueeze(0)
             obstacles = obstacles.unsqueeze(0)
             if actions is not None:
                 actions = actions.unsqueeze(0)
         else:
             squeeze = False
-        device = obs.device
-        obs_embedded = self.obs_embedding(obs).unsqueeze(0)  # (1, batch_size, latent_dim)
-
-        mask = obstacles[:, -1, :].squeeze(1)  # (batch_size, obstacles_num)
+        device = observations.device
+        observations_replicated = observations.unsqueeze(-1).repeat(1, 1, self.obstacle_num)  # (batch_size, state_dim + 2 * goal_dim, obstacles_num)
+        
+        
+        # Extract mask and obstacle data
+        mask = obstacles[:, -1, :]  # (batch_size, obstacles_num)
         obstacles_data = obstacles[:, :-1, :]  # (batch_size, obstacle_dim, obstacles_num)
-
-        obstacles_embedded = self.obstacle_embedding(obstacles_data.permute(2, 0, 1))  # (obstacles_num, batch_size, latent_dim)
-
-        # Combine the embedded observation and obstacles
-        combined_input = torch.cat((obs_embedded, obstacles_embedded), dim=0)  # (1 + obstacles_num, batch_size, latent_dim)
+        observations_with_obstacles = torch.cat((observations_replicated, obstacles_data), dim=1)  # (batch_size, state_dim + 2 * goal_dim + obstacle_dim, obstacles_num)
+        
+        # Obtain the embedding for first combining observations and obstacles
+        observations_with_obstacles_embedded = self.observation_with_obstacle_embedding(observations_with_obstacles.permute(2, 0, 1))  # (obstacles_num, batch_size, latent_dim)
 
         # Generate attention mask for Transformer
-        attention_mask = torch.cat((torch.zeros(mask.size(0), 1, dtype=torch.bool, device=device), mask == 0), dim=1)  # (batch_size, 1 + obstacles_num)
+        attention_mask = (mask == 0)  # (batch_size, obstacles_num)
         
-        transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
-        transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
-
-        mu = self.mu_layer(transformer_output).view(-1, self.num_components, self.act_dim) # (batch_size, num_components, act_dim)
-        log_std = self.log_std_layer(transformer_output).view(-1, self.num_components, self.act_dim)
-        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
-        std = torch.exp(log_std) # (batch_size, num_components, act_dim)
-
-        logits = self.logits_layer(transformer_output)  # (batch_size, num_components)
+        transformer_output = self.transformer_encoder(observations_with_obstacles_embedded, src_key_padding_mask=attention_mask)  # (obstacles_num, batch_size, latent_dim)
+        if self.pooling_type == "max":
+            pooling_output = self.max_pooling(transformer_output, mask)  # (batch_size, latent_dim)
+        else: 
+            pooling_output = self.average_pooling(transformer_output, mask)  # (batch_size, latent_dim)
+        
+        goal_reaching_out = self.goal_reaching_net(observations)
+        combined_out = torch.cat((goal_reaching_out, pooling_output), dim=-1)
+        
+        pi_action, logp_pi = self.gmm_policy_head(combined_out, deterministic, with_logprob, actions, self.act_limit)
+        
         if squeeze:
-            mu = mu.squeeze()
-            std = std.squeeze()
-            logits = logits.squeeze()
+            pi_action = pi_action.squeeze()
+            if logp_pi is not None:
+                logp_pi = logp_pi.squeeze()
         
-        compo = Normal(loc=mu, scale=std)
-        compo = D.Independent(compo, 1)
-        mix = D.Categorical(logits=logits)
-        gmm =D.MixtureSameFamily(
-            mixture_distribution=mix, component_distribution=compo
-        )
+        return pi_action, logp_pi
 
-        if actions is None:
-            if deterministic:
-                pi_action = mu.mean(dim=0)
-            else:
-                pi_action = gmm.sample()
-
-            if with_logprob:
-                # 计算总的对数概率
-                logp_pi = gmm.log_prob(pi_action)
-                logp_pi = logp_pi -  (2 * (torch.log(torch.tensor(2.0)) - pi_action - F.softplus(-2 * pi_action))).sum(axis=-1) 
-            else:
-                logp_pi = None
-
-            pi_action = torch.tanh(pi_action)
-            pi_action = self.act_limit * pi_action
-
-            return pi_action, logp_pi
-        else:
-            # Clip actions to avoid inf values in atanh
-            clipped_actions = torch.clamp(actions / self.act_limit, -1 + self.epsilon, 1 - self.epsilon)
-            unsquashed_actions = torch.atanh(clipped_actions) # reverse the squashing
-            logp_pi = gmm.log_prob(unsquashed_actions)
-            logp_pi = logp_pi - (2 * (torch.log(torch.tensor(2.0)) - unsquashed_actions - F.softplus(-2 * unsquashed_actions))).sum(axis=-1)
-            return actions, logp_pi
+    def average_pooling(self, output, mask):
+        """
+        Fullfill average pooling for the output of transformer encoder
+        output: (obstacles_num, batch_size, latent_dim), mask: (batch_size, obstacles_num)
+        """
+        output = output.permute(1, 0, 2)  # (batch_size, obstacles_num, latent_dim)
+        mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
+        output_mask = output * mask_expanded  # (batch_size, obstacles_num, latent_dim)
+        valid_counts = mask.sum(dim=1, keepdim=True).float()  # (batch_size, 1)
+        output_sum = output_mask.sum(dim=1)  # (batch_size, latent_dim)
+        output_avg = output_sum / valid_counts  # (batch_size, latent_dim)
+        output_avg[valid_counts.squeeze() == 0] = 0
+        return output_avg
+    
+    def max_pooling(self, output, mask):
+        """
+        Fullfill max pooling for the output of transformer encoder
+        output: (obstacles_num, batch_size, latent_dim), mask: (batch_size, obstacles_num)
+        """
+        output = output.permute(1, 0, 2)  # (batch_size, obstacles_num, latent_dim)
+        mask_expanded = mask.unsqueeze(-1).expand_as(output)
+        small_value = -1e9
+        output_mask = output * mask_expanded + small_value * (1 - mask_expanded)
+        valid_counts = mask.sum(dim=1, keepdim=True).float()
+        output_max = output_mask.max(dim=1)[0]
+        output_max[valid_counts.squeeze() == 0] = 0
+        return output_max
 
     def compute_bc_loss(self, obs, obstacles, actions):
         _, logp_pi = self.forward(obs, obstacles, actions)
