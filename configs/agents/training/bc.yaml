@@ -21,7 +21,9 @@ astar_max_iter: 10
 astar_heuristic_type: 'mix_original'
 whether_astar_dataset: true
 astar_dataset_dir: 'datasets/data/'
-
+fixed_number: false
+pooling_type: 'average'
+nn_version: '1'
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
 use_logger: true
@@ -83,7 +85,7 @@ env_config:
     number_obstacles: 10
     max_length: 20
     min_length: 1.0
-    fixed_number: false
+    fixed_number: true
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer
