@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions.normal import Normal
-
+import torch.distributions as D
 # For ResNet agent
 import random
 from operator import add
@@ -103,6 +103,46 @@ class GaussianPolicyHead(nn.Module):
         pi_action = self.act_limit * pi_action
 
         return pi_action, logp_pi
+    
+class GMMPolicyHead(nn.Module):
+    def __init__(self, latent_dim, act_dim, act_limit, num_components):
+        super().__init__()
+        self.num_components = num_components
+        self.act_dim = act_dim
+        self.act_limit = act_limit
+        self.mu_layer = nn.Linear(latent_dim, act_dim * num_components)
+        self.log_std_layer = nn.Linear(latent_dim, act_dim * num_components)
+        self.logits_layer = nn.Linear(latent_dim, num_components)
+        self.epsilon = 1e-6  # Small value to avoid inf
+    
+    def forward(self, x, deterministic=False, with_logprob=True):
+        """x: (batch_size, latent_dim)"""
+        mu = self.mu_layer(x).view(-1, self.num_components, self.act_dim) # (batch_size, num_components, act_dim)
+        log_std = self.log_std_layer(x).view(-1, self.num_components, self.act_dim) # (batch_size, num_components, act_dim)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+        logits = self.logits_layer(x)
+        
+        compo = Normal(loc=mu, scale=std)
+        compo = D.Independent(compo, 1)
+        mix = D.Categorical(logits=logits)
+        gmm = D.MixtureSameFamily(mixture_distribution=mix, component_distribution=compo)
+        if deterministic:
+            pi_action = gmm.mean
+        else:
+            pi_action = gmm.sample()
+        
+        if with_logprob:
+            logp_pi = gmm.log_prob(pi_action)
+            logp_pi = logp_pi - (2 * (torch.log(torch.tensor(2.0)) - pi_action - F.softplus(-2 * pi_action))).sum(axis=-1)
+        else:
+            logp_pi = None
+
+        pi_action = torch.tanh(pi_action)
+        pi_action = self.act_limit * pi_action
+
+        return pi_action, logp_pi
+        
         
 
 class SquashedGaussianMLPActor(nn.Module):
@@ -404,8 +444,8 @@ class SetQFunction(nn.Module):
 
 #         return pi_action, logp_pi
 
-class SquashedGaussianAttentionActor(nn.Module):
-    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, pooling_type="average"):
+class SquashedAttentionActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, pooling_type="average", policy_head="gaussian"):
         super().__init__()
         self.state_dim = state_dim
         self.goal_dim = goal_dim
@@ -425,9 +465,10 @@ class SquashedGaussianAttentionActor(nn.Module):
         self.q_proj = nn.Linear(qkv_input_dim, self.latent_dim)
         self.k_proj = nn.Linear(qkv_input_dim, self.latent_dim)
         self.v_proj = nn.Linear(qkv_input_dim, self.latent_dim)
-        
-        self.gaussian_policy_head = GaussianPolicyHead(self.latent_dim + hidden_sizes[-1], act_dim, act_limit)
-        self.act_limit = act_limit
+        if policy_head == "gaussian":
+            self.policy_head = GaussianPolicyHead(self.latent_dim + hidden_sizes[-1], act_dim, act_limit)
+        else:
+            self.policy_head = GMMPolicyHead(self.latent_dim + hidden_sizes[-1], act_dim, act_limit, num_components=5)
 
     def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
         """
@@ -468,7 +509,7 @@ class SquashedGaussianAttentionActor(nn.Module):
         goal_reaching_out = self.goal_reaching_net(obs) # (batch_size, hidden_sizes[-1])
         combined_out = torch.cat((goal_reaching_out, pooling_output), dim=-1) # (batch_size, latent_dim + hidden_sizes[-1])
 
-        pi_action, logp_pi = self.gaussian_policy_head(combined_out, deterministic, with_logprob)
+        pi_action, logp_pi = self.policy_head(combined_out, deterministic, with_logprob)
        
         if squeeze:
             pi_action = pi_action.squeeze()
@@ -482,13 +523,17 @@ class SquashedGaussianAttentionActor(nn.Module):
         Fullfill average pooling for the output of transformer encoder
         output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
         """
-        mask = mask.squeeze()  # (batch_size, obstacles_num)
+        mask = mask.squeeze(1)  # (batch_size, obstacles_num)
         mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
         output_mask = output * mask_expanded  # (batch_size, obstacles_num, latent_dim)
         valid_counts = mask.sum(dim=1, keepdim=True).float()  # (batch_size, 1)
         output_sum = output_mask.sum(dim=1)  # (batch_size, latent_dim)
-        output_avg = output_sum / valid_counts  # (batch_size, latent_dim)
-        output_avg[valid_counts.squeeze() == 0] = 0
+        
+        output_avg = torch.zeros_like(output_sum)  # (batch_size, latent_dim)
+        non_zero_mask = valid_counts.squeeze() != 0
+        output_avg[non_zero_mask] = output_sum[non_zero_mask] / valid_counts[non_zero_mask]
+        # output_avg = output_sum / valid_counts  # (batch_size, latent_dim)
+        # output_avg[valid_counts.squeeze() == 0] = 0
         return output_avg
     
     def max_pooling(self, output, mask):
@@ -496,13 +541,17 @@ class SquashedGaussianAttentionActor(nn.Module):
         Fullfill max pooling for the output of transformer encoder
         output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
         """
-        mask = mask.squeeze()  # (batch_size, obstacles_num)
+        mask = mask.squeeze(1)  # (batch_size, obstacles_num)
+        
+        # Expand the mask to match the dimensions of the output
         mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
-        small_value = -1e9
-        output_mask = output * mask_expanded + small_value * (1 - mask_expanded)
-        valid_counts = mask.sum(dim=1, keepdim=True).float()  # (batch_size, 1)
-        output_max = output_mask.max(dim=1)[0]
-        output_max[valid_counts.squeeze() == 0] = 0
+        
+        # Set the output to zero where the mask is invalid
+        output_masked = output * mask_expanded  # This will zero out the positions where mask is 0
+        
+        # Apply max pooling along the obstacles_num dimension
+        output_max = output_masked.max(dim=1)[0]  # (batch_size, latent_dim)
+        
         return output_max
 
 class AttentionQFunction(nn.Module):
@@ -577,13 +626,17 @@ class AttentionQFunction(nn.Module):
         Fullfill average pooling for the output of transformer encoder
         output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
         """
-        mask = mask.squeeze()  # (batch_size, obstacles_num)
+        mask = mask.squeeze(1)  # (batch_size, obstacles_num)
         mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
         output_mask = output * mask_expanded  # (batch_size, obstacles_num, latent_dim)
         valid_counts = mask.sum(dim=1, keepdim=True).float()  # (batch_size, 1)
         output_sum = output_mask.sum(dim=1)  # (batch_size, latent_dim)
-        output_avg = output_sum / valid_counts  # (batch_size, latent_dim)
-        output_avg[valid_counts.squeeze() == 0] = 0
+        
+        output_avg = torch.zeros_like(output_sum)  # (batch_size, latent_dim)
+        non_zero_mask = valid_counts.squeeze() != 0
+        output_avg[non_zero_mask] = output_sum[non_zero_mask] / valid_counts[non_zero_mask]
+        # output_avg = output_sum / valid_counts  # (batch_size, latent_dim)
+        # output_avg[valid_counts.squeeze() == 0] = 0
         return output_avg
     
     def max_pooling(self, output, mask):
@@ -591,18 +644,18 @@ class AttentionQFunction(nn.Module):
         Fullfill max pooling for the output of transformer encoder
         output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
         """
-        mask = mask.squeeze()  # (batch_size, obstacles_num)
+        mask = mask.squeeze(1)  # (batch_size, obstacles_num)
+        # Expand the mask to match the dimensions of the output
         mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
-        small_value = -1e9
-        output_mask = output * mask_expanded + small_value * (1 - mask_expanded)
-        valid_counts = mask.sum(dim=1, keepdim=True).float()  # (batch_size, 1)
-        output_max = output_mask.max(dim=1)[0]
-        output_max[valid_counts.squeeze() == 0] = 0
+        # Set the output to zero where the mask is invalid
+        output_masked = output * mask_expanded  # This will zero out the positions where mask is 0
+        # Apply max pooling along the obstacles_num dimension
+        output_max = output_masked.max(dim=1)[0]  # (batch_size, latent_dim)
         return output_max
 
 
-class SquashedGaussianTransformerActor(nn.Module):
-    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, n_head=8, num_layers=2):
+class SquashedTransformerActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, n_head=8, num_layers=2, policy_head="gaussian"):
         super().__init__()
         self.state_dim = state_dim
         self.goal_dim = goal_dim
@@ -617,8 +670,10 @@ class SquashedGaussianTransformerActor(nn.Module):
         encoder_layers = nn.TransformerEncoderLayer(d_model=self.latent_dim, nhead=self.n_head)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=2)
         
-        self.gaussian_policy_head = GaussianPolicyHead(self.latent_dim, act_dim, act_limit)
-        self.act_limit = act_limit
+        if policy_head == "gaussian":
+            self.policy_head = GaussianPolicyHead(self.latent_dim, act_dim, act_limit)
+        else:
+            self.policy_head = GMMPolicyHead(self.latent_dim, act_dim, act_limit, num_components=5)
 
     def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
         """
@@ -648,7 +703,7 @@ class SquashedGaussianTransformerActor(nn.Module):
         transformer_output = self.transformer_encoder(combined_input, src_key_padding_mask=attention_mask)  # (1 + obstacles_num, batch_size, latent_dim)
         transformer_output = transformer_output[0, :, :]  # 取第一个token的输出，代表全局信息 (batch_size, latent_dim)
 
-        pi_action, logp_pi = self.gaussian_policy_head(transformer_output, deterministic, with_logprob)
+        pi_action, logp_pi = self.policy_head(transformer_output, deterministic, with_logprob)
         
         if squeeze:
             pi_action = pi_action.squeeze()
@@ -749,8 +804,8 @@ class AttentionActorCritic(nn.Module):
         obstacle_num = 10
 
         # build policy and value functions
-        self.pi = SquashedGaussianAttentionActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
-            act_dim, hidden_sizes, activation, act_limit, pooling_type="average")
+        self.pi = SquashedAttentionActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit, pooling_type="average", policy_head="gaussian")
         self.q1 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
                                act_dim, hidden_sizes, activation, pooling_type="average")
         self.q2 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
@@ -776,8 +831,8 @@ class TransformerActorCritic(nn.Module):
         obstacle_num = 20
 
         # build policy and value functions
-        self.pi = SquashedGaussianTransformerActor(state_dim, goal_dim, obstacle_dim, obstacle_num, \
-            act_dim, hidden_sizes, activation, act_limit)
+        self.pi = SquashedTransformerActor(state_dim, goal_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit, policy_head="gaussian")
         self.q1 = TransformerQFunction(state_dim, goal_dim, obstacle_dim, obstacle_num, \
                                act_dim, hidden_sizes, activation)
         self.q2 = TransformerQFunction(state_dim, goal_dim, obstacle_dim, obstacle_num, \

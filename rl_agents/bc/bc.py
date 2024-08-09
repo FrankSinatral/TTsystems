@@ -86,7 +86,7 @@ class BC:
         self.pooling_type = self.config.get("pooling_type", "average")
         self.nn_version = self.config.get("nn_version", "1")
         self.device = device
-        
+        self.policy_head = self.config.get("policy_head", "gaussian")
         
         self.vehicle_type = config['env_config']['vehicle_type']
         exp_name = self.env_name + '_' + config['algo_name'] + '_' + self.vehicle_type + '_' + str(self.seed) + '_' + get_current_time_format()
@@ -149,22 +149,30 @@ class BC:
         
         if self.nn_version == "1":
             # fank version
-            self.actor = core.SquashedGaussianMixtureTransformerActorVersion1(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
-                                                         act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
-                                                         activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
+            print("Choose Transformer Version")
+            print("Using policy head: {}".format(self.policy_head))
+            self.actor = core.SquashedTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+                                                            activation=nn.ReLU, act_limit=self.act_limit, 
+                                                            policy_head=self.policy_head).to(self.device)
         elif self.nn_version == "2":
+            print("Choose Attention Version")
+            print("Using pooling type: {}".format(self.pooling_type))
+            print("Using policy head: {}".format(self.policy_head))
+            self.actor = core.SquashedAttentionActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+                                                            activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type,
+                                                            policy_head=self.policy_head).to(self.device)  
+        elif self.nn_version == "3":
             # rzz version
             self.actor = core.SquashedGaussianMixtureTransformerActorVersion2(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                             act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                             activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type).to(self.device)
-        elif self.nn_version == "3":
-            self.actor = core.SquashedGaussianAttentionActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
-                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
-                                                            activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type).to(self.device)
         else:
-            self.actor = core.SquashedGaussianTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+            self.actor = core.SquashedTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                             act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
-                                                            activation=nn.ReLU, act_limit=self.act_limit).to(self.device)
+                                                            activation=nn.ReLU, act_limit=self.act_limit, 
+                                                            policy_head=self.policy_head).to(self.device)
         self.actor_optimizer = Adam(self.actor.parameters(), lr=self.lr)
         
         

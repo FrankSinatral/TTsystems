@@ -22,12 +22,12 @@ astar_heuristic_type: 'mix_original'
 whether_astar_dataset: true
 astar_dataset_dir: 'datasets/data/'
 fixed_number: false
-pooling_type: 'max'
+pooling_type: 'average'
 nn_version: '2'
 policy_head: 'gmm'
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
-use_logger: true
+use_logger: false
 
 
 pretrained: false
@@ -72,7 +72,7 @@ env_config:
       d: 5
     lidar_detection_one_hot_triple:
       d: 5
-  evaluate_mode: false
+  evaluate_mode: true
   generate_goals_config:
     x_min: -30
     x_max: 30
