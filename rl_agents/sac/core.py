@@ -1161,3 +1161,180 @@ class CNNActorCritic(nn.Module):
 
 #         # x = F.softmax(x, dim=-1)
 #         return x
+
+
+class SquashedGaussianAttentionActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+
+        self.goal_reaching_net = mlp([state_dim + 2 * goal_dim] + list(hidden_sizes), activation, activation)
+        qkv_input_dim = state_dim + 2 * goal_dim + obstacle_dim
+        qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
+        
+        self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
+        self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
+        self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation) # TODO: take out the relu
+        # self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation) # TODO: may need to change the layer structure
+        
+        self.mu_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
+        self.log_std_layer = nn.Linear(self.latent_dim + hidden_sizes[-1], act_dim)
+        self.act_limit = act_limit
+
+    def forward(self, obs, obstacles, deterministic=False, with_logprob=True):
+        """
+        obs: (batch_size, (state_dim + 2*goal_dim)) or (state_dim + 2*goal_dim)
+        obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        TODO: may change to mixture of Gaussian
+        """
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+        else:
+            squeeze = False
+
+        obs_replicated = obs.unsqueeze(-1).repeat(1, 1, self.obstacle_num) # (batch_size, (state_dim + 2*goal_dim), obstacles_num)
+
+        obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
+        combined_obs = torch.cat((obs_replicated, obstacles_data), dim=1) # (batch_size, (state_dim + 2*goal_dim + obstacle_dim), obstacles_num)
+
+        query = self.q_proj(combined_obs.permute(0, 2, 1)) # (batch_size, obstacles_num, latent_dim)
+        key = self.k_proj(combined_obs.permute(0, 2, 1)) # (batch_size, obstacles_num, latent_dim)
+        value = self.v_proj(combined_obs.permute(0, 2, 1)) # (batch_size, obstacles_num, latent_dim)
+
+        mask = obstacles[:, -1, :].unsqueeze(1) # (batch_size, 1, obstacles_num)
+
+        dk = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1)) # (batch_size, obstacles_num, obstacles_num)
+        scores = scores / torch.sqrt(torch.tensor(dk, dtype=torch.float32))
+
+        scores = scores.masked_fill(mask == 0, -1e9)
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_output = torch.matmul(attn_weights, value) # (batch_size, obstacles_num, latent_dim)
+        attn_output = attn_output * mask.permute(0, 2, 1) # (batch_size, obstacles_num, latent_dim)
+        # attn_output, _ = attn_output.max(dim=1) # (batch_size, latent_dim)
+        attn_output = attn_output.sum(dim=1) # TODO: this way you have to take out ReLU
+        # attn_output = attn_output.mean(dim=1) # TODO: this way you have to take out ReLU
+        # TODO: average
+        goal_reaching_out = self.goal_reaching_net(obs) # (batch_size, hidden_sizes[-1])
+        combined_out = torch.cat((goal_reaching_out, attn_output), dim=-1) # (batch_size, latent_dim + hidden_sizes[-1])
+
+        mu = self.mu_layer(combined_out)
+        log_std = self.log_std_layer(combined_out)
+        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
+        std = torch.exp(log_std)
+
+        if squeeze:
+            mu = mu.squeeze()
+            std = std.squeeze()
+
+        pi_distribution = Normal(mu, std)
+        if deterministic:
+            pi_action = mu
+        else:
+            pi_action = pi_distribution.rsample()
+
+        if with_logprob:
+            logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
+            logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
+        else:
+            logp_pi = None
+
+        pi_action = torch.tanh(pi_action)
+        pi_action = self.act_limit * pi_action
+
+        return pi_action, logp_pi
+
+class AttentionQFunctionOld(nn.Module):
+    def __init__(self, state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.perception_dim = perception_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+
+        qkv_input_dim = state_dim + 2 * goal_dim + obstacle_dim + act_dim
+        qkv_hidden_sizes = [qkv_input_dim] + list(hidden_sizes)
+
+        self.q_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
+        self.k_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation)
+        self.v_proj = mlp(qkv_hidden_sizes + [self.latent_dim], activation, nn.ReLU)
+        
+        self.q_layer = mlp([state_dim + 2 * goal_dim + hidden_sizes[-1] + act_dim] + list(hidden_sizes) + [1], activation)
+        self.hidden_size = hidden_sizes[-1]
+
+    def forward(self, obs, obstacles, act):
+        """the input shape will always have batch_size dimension"""
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+            act = act.unsqueeze(0)
+        else:
+            squeeze = False
+            
+        # Concatenate obs and act
+        obs_act = torch.cat([obs, act], dim=-1)
+        
+        obs_act_replicated = obs_act.unsqueeze(-1).repeat(1, 1, self.obstacle_num)
+
+        obstacles_data = obstacles[:, :self.obstacle_dim, :]
+        combined_obs = torch.cat((obs_act_replicated, obstacles_data), dim=1)
+
+        query = self.q_proj(combined_obs.permute(0, 2, 1))
+        key = self.k_proj(combined_obs.permute(0, 2, 1))
+        value = self.v_proj(combined_obs.permute(0, 2, 1))
+
+        mask = obstacles[:, -1, :].unsqueeze(1)
+
+        dk = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1))
+        scores = scores / torch.sqrt(torch.tensor(dk, dtype=torch.float32))
+
+        scores = scores.masked_fill(mask == 0, -1e9)
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_output = torch.matmul(attn_weights, value)
+        attn_output = attn_output * mask.permute(0, 2, 1)
+
+        # attn_output, _ = attn_output.max(dim=1)
+        attn_output = attn_output.sum(dim=1)
+
+        combined_out = torch.cat([obs, act, attn_output], dim=-1)
+        q = self.q_layer(combined_out)
+        return torch.squeeze(q, -1)
+
+class AttentionActorCriticOld(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
+                 activation=nn.ReLU):
+        super().__init__()
+
+        obs_dim = observation_space.shape[0]
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+        state_dim = 6
+        goal_dim = 6
+        perception_dim = obs_dim - (2*state_dim + goal_dim)
+        obstacle_dim = 4 # currently this is fixed
+        obstacle_num = 10
+
+        # build policy and value functions
+        self.pi = SquashedGaussianAttentionActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit)
+        self.q1 = AttentionQFunctionOld(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+        self.q2 = AttentionQFunctionOld(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation)
+
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.pi(obs, obstacles, deterministic, False)
+            # I have to change here for GPU
+            return a.cpu().numpy()
