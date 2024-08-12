@@ -1235,6 +1235,7 @@ class ThreeTrailer(Vehicle):
         return (x_center, y_center, self.RF + self.RTR + self.RTR2 + self.RTR3 + self.RTF3, self.W, yaw0)
         
     def reset(self, *args):
+        """you need to plug the args as reset_equilibrium"""
         self.state = tuple(arg for arg in args if arg is not None)
         
     def observe(self):
@@ -1479,29 +1480,32 @@ class ThreeTrailer(Vehicle):
         """
         x, y, yaw, yawt1, yawt2, yawt3 = state
         bounding_box_list = []
-        x_tractor, y_tractor = self.get_center_tractor()
+        x_tractor, y_tractor = self.get_center_tractor(state)
         x_tractor_l = self.RF + self.RB
         x_tractor_w = self.W
         bounding_box_list.append((x_tractor, y_tractor, x_tractor_l, x_tractor_w, yaw))
-        x_trailer1, y_trailer1 = self.get_center_trailer(1)
+        x_trailer1, y_trailer1 = self.get_center_trailer(1, state)
         x_trailer1_l = self.RTB - self.RTF
         x_trailer1_w = self.W
         bounding_box_list.append((x_trailer1, y_trailer1, x_trailer1_l, x_trailer1_w, yawt1))
-        x_trailer2, y_trailer2 = self.get_center_trailer(2)
+        x_trailer2, y_trailer2 = self.get_center_trailer(2, state)
         x_trailer2_l = self.RTB2 - self.RTF2
         x_trailer2_w = self.W
         bounding_box_list.append((x_trailer2, y_trailer2, x_trailer2_l, x_trailer2_w, yawt2))
-        x_trailer3, y_trailer3 = self.get_center_trailer(3)
+        x_trailer3, y_trailer3 = self.get_center_trailer(3, state)
         x_trailer3_l = self.RTB3 - self.RTF3
         x_trailer3_w = self.W
         bounding_box_list.append((x_trailer3, y_trailer3, x_trailer3_l, x_trailer3_w, yawt3))
         return bounding_box_list
     
-    def get_center_trailer(self, number: int) -> Tuple[float, float]:
+    def get_center_trailer(self, number: int, state=None) -> Tuple[float, float]:
         """
         get the center of tractor directly from the self.state
         """
-        x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        if state is None:
+            x, y, yaw, yawt1, yawt2, yawt3 = self.state
+        else:
+            x, y, yaw, yawt1, yawt2, yawt3 = state
         if number == 1:
             x_trailer = x - self.RTR * np.cos(yawt1)
             y_trailer = y - self.RTR * np.sin(yawt1)
@@ -1522,9 +1526,15 @@ class ThreeTrailer(Vehicle):
             
         return (x_trailer, y_trailer)
     
-    def get_center_tractor(self) -> Tuple[float, float]:
-        """get the center position of tractor"""
-        x, y, yaw, _, _, _ = self.state
+    def get_center_tractor(self, state=None) -> Tuple[float, float]:
+        """get the center position of tractor
+        if you input state, then will return the input state center tractor coordinates
+        if you don't input state, 
+        """
+        if state is None:
+            x, y, yaw, _, _, _ = self.state
+        else:
+            x, y, yaw, _, _, _ = state
         x += self.WB / 2 * np.cos(yaw)
         y += self.WB / 2 * np.sin(yaw)
         return (x, y)

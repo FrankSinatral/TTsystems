@@ -21,6 +21,9 @@ class TaskRunner:
         np.random.seed(self.seed)
         self.env_config = self.config.get("env_config", {})
         self.env = env_fn(self.env_config)
+        with open("datasets/fixed_obstacles_info.pickle", 'rb') as file:
+            self.task_list = pickle.load(file)
+            self.env.unwrapped.update_task_list(self.task_list)
         self.astar_mp_steps = self.config.get("astar_mp_steps", 10)
         self.astar_N_steps = self.config.get("astar_N_steps", 10)
         self.astar_max_iter = self.config.get("astar_max_iter", 5)
@@ -110,10 +113,9 @@ class TaskRunner:
         while self.finish_episode_number // self.astar_batch_size < self.astar_total_batch:
             self.feasible_seed_number += 1
             o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
-            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
+            while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
                 self.feasible_seed_number += 1
                 o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
-            
             self.encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
             self.finish_episode_number += 1
             if len(self.encounter_task_list) >= self.astar_batch_size:

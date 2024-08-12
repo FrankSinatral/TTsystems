@@ -178,6 +178,7 @@ class SAC_ASTAR_META_NEW:
         self.astar_dataset_dir = self.config.get("astar_dataset_dir", 'datasets/data/')
     
         self.whether_dataset = self.config.get("whether_dataset", False)
+        self.whether_fixed_obstacles = self.config.get("whether_fixed_obstacles", False) # whether fix our obstacles
         self.dataset_path = self.config.get("dataset_path", 'datasets/goal_with_obstacles_info_list.pickle')
         self.env_config = self.config.get("env_config", None)
         self.whether_fix_number = self.env_config["generate_obstacles_config"].get("fixed_number", False) # fix a typo
@@ -185,6 +186,8 @@ class SAC_ASTAR_META_NEW:
         self.seed = self.config.get("seed", 0)
         self.replay_size = self.config.get("replay_size", int(1e6))
         self.use_logger = self.config.get("use_logger", True)
+        self.pooling_type = self.config.get("pooling_type", "average")
+        self.policy_head = self.config.get("policy_head", "gaussian")
         self.device = device
         
         if config['activation'] == 'ReLU':
@@ -230,6 +233,13 @@ class SAC_ASTAR_META_NEW:
             # Update the training data distribution using an existing data file
             self.env.unwrapped.update_task_list(task_list)
             self.test_env.unwrapped.update_task_list(task_list) # TODO: set the same as self.env
+        if self.whether_fixed_obstacles:
+            # If using fixed obstacles, we need to use the obstacle info
+            task_list = [{
+                "obstacles_info": self.config.get("obstacles_info"),
+            }]
+            self.env.unwrapped.update_task_list(task_list)
+            self.test_env.unwrapped.update_task_list(task_list)
         self.observation_type = self.env.unwrapped.observation_type
         self.whether_attention = self.env.unwrapped.config.get("with_obstacles_info", False)
         
@@ -263,9 +273,12 @@ class SAC_ASTAR_META_NEW:
         if self.whether_attention:
             if config["algo_name"].endswith("obs_attention"):
                 actor_critic = core.AttentionActorCritic # change our model for testing
+                self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs, pooling_type=self.pooling_type,
+                                    policy_head=self.policy_head).to(self.device)
             else:   
                 actor_critic = core.TransformerActorCritic
-            self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
+                self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs,
+                                    policy_head=self.policy_head).to(self.device)
         else:
             actor_critic = core.MLPActorCritic
             self.ac = actor_critic(self.box, self.env.action_space, **ac_kwargs).to(self.device)
@@ -593,7 +606,7 @@ class SAC_ASTAR_META_NEW:
         finish_episode = 0
         while finish_episode < self.num_test_episodes:
             o, info = self.test_env.reset(seed=feasible_seed_number)
-            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
+            while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
                 feasible_seed_number += 1
                 o, info = self.test_env.reset(seed=feasible_seed_number)
             finish_episode += 1
@@ -721,7 +734,7 @@ class SAC_ASTAR_META_NEW:
         feasible_seed_number = 0
         print("Start Finding a New Feasible Task")
         o, info = self.env.reset(seed=self.seed)
-        while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
+        while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
             feasible_seed_number += 1
             o, info = self.env.reset(seed=(self.seed + feasible_seed_number))  
         print("Finish Finding a New Feasible Task with id:", self.seed  + feasible_seed_number)
@@ -882,7 +895,7 @@ class SAC_ASTAR_META_NEW:
                 feasible_seed_number = 0       
                 print("Start Finding a New Feasible Task from id:", self.seed + t + feasible_seed_number)
                 o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
-                while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
+                while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
                     feasible_seed_number += 1
                     o, info = self.env.reset(seed=(self.seed + t + feasible_seed_number))
                 print("Finish Finding a New Feasible Task with id:", self.seed + t + feasible_seed_number)

@@ -791,7 +791,7 @@ class MLPActorCritic(nn.Module):
         
 class AttentionActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, hidden_sizes=(256,256),
-                 activation=nn.ReLU):
+                 activation=nn.ReLU, pooling_type="average", policy_head="gaussian"):
         super().__init__()
 
         obs_dim = observation_space.shape[0]
@@ -804,12 +804,12 @@ class AttentionActorCritic(nn.Module):
         obstacle_num = 10
 
         # build policy and value functions
-        self.pi = SquashedAttentionActor(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
-            act_dim, hidden_sizes, activation, act_limit, pooling_type="average", policy_head="gaussian")
-        self.q1 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
-                               act_dim, hidden_sizes, activation, pooling_type="average")
-        self.q2 = AttentionQFunction(state_dim, goal_dim, perception_dim, obstacle_dim, obstacle_num, \
-                               act_dim, hidden_sizes, activation, pooling_type="average")
+        self.pi = SquashedAttentionActor(state_dim, goal_dim, obstacle_dim, obstacle_num, \
+            act_dim, hidden_sizes, activation, act_limit, pooling_type=pooling_type, policy_head=policy_head)
+        self.q1 = AttentionQFunction(state_dim, goal_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation, pooling_type=pooling_type)
+        self.q2 = AttentionQFunction(state_dim, goal_dim, obstacle_dim, obstacle_num, \
+                               act_dim, hidden_sizes, activation, pooling_type=pooling_type)
 
     def act(self, obs, obstacles, deterministic=False):
         with torch.no_grad():

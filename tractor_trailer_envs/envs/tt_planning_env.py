@@ -529,7 +529,7 @@ class TractorTrailerMetaPlanningEnv(Env):
         - number_obstacles: represent the number of obstacles(0-5)
         - min_length: the minimum length of the obstacle(we fix the minmum length to 1.0)
         - max_length: the maximum length of the obstacle
-        
+        There will always have start position and goal position
         Note that if we have no obstacles, the obstacles info will be [] instead of None
         """
         obstacles_list = []
@@ -650,7 +650,6 @@ class TractorTrailerMetaPlanningEnv(Env):
         """
         this function is for our generation of the goal
         - case1: there is no obstacles we just sample our goal
-        
         - case2: there is obstacles we have to check whether the goal is legal
         """
         while True:
@@ -871,6 +870,23 @@ class TractorTrailerMetaPlanningEnv(Env):
         }
         return obs_dict, info_dict
     
+    def check_goal_with_using_lidar_detection_one_hot(self):
+        """If the goal is too close to the obstacles, we will return false
+        we will return true
+        """
+        controlled_vehicle = deepcopy(self.controlled_vehicle)
+        controlled_vehicle.reset_equilibrium(self.goal[0], self.goal[1], self.goal[2])
+        lidar_detection_one_hot = controlled_vehicle.lidar_detection_one_hot(5, self.ox, self.oy)
+        back_place = lidar_detection_one_hot[-4]
+        if np.isclose(back_place, 1.0):
+            return False
+        lidar_detection_one_hot_second = controlled_vehicle.lidar_detection_one_hot(3, self.ox, self.oy)
+        back_left_place = lidar_detection_one_hot_second[-3]
+        back_right_place = lidar_detection_one_hot_second[-5]
+        if np.isclose(back_left_place, 1.0) or np.isclose(back_right_place , 1.0):
+            return False
+        return True
+        
     def sparse_reward(self, state, state_, goal=None):
         if goal is None:
             goal = np.array([self.goal], dtype=np.float32)

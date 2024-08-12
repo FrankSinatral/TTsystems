@@ -7,7 +7,7 @@ import logging
 
 # import rl_training.tt_system_implement as tt_envs
 import tractor_trailer_envs as tt_envs
-
+from copy import deepcopy
 from tractor_trailer_envs import register_tt_envs
 register_tt_envs()
 import numpy as np
@@ -25,6 +25,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def main():
     with open("configs/envs/free_big_planning.yaml", 'r') as file:
         config = yaml.safe_load(file)
+    with open("datasets/goal_with_obstacles_info_list_hz.pickle", 'rb') as file:
+        task_list = pickle.load(file)
     env = gym.make("tt-planning-v0", config=config)
     planner_config = {
         "plot_final_path": False,
@@ -61,18 +63,28 @@ def main():
         },
         "acceptance_error": 0.5,
     }
-    
+    # env.unwrapped.update_task_list(task_list)
+    task_list = [
+        {
+            "goal": np.array([-30, 0, 0, 0, 0, 0], dtype=np.float32),
+            "obstacles_info": [[(-15, -10), (-15, 10), (-16, 10), (-16, -10)]],
+        }
+    ]
+    env.unwrapped.update_task_list(task_list)
     feasible_count = 0
-    scenario_id = 102643
+    scenario_id = 102659
     while feasible_count < 100000:
         logging.info(f"Trying scenario_id: {scenario_id}")
-        obs, info = env.reset(seed=scenario_id)
-        while not planner.check_is_start_feasible(obs["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config):
+        obs, info = env.reset(seed=scenario_id) 
+        while (not planner.check_is_start_feasible(obs["achieved_goal"], info["obstacles_info"], info["map_vertices"], planner_config)) or (not env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
             logging.info(f"Scenario {scenario_id} is not feasible, trying next scenario.")
             scenario_id += 1
             logging.info(f"Trying scenario_id: {scenario_id}")
             obs, info = env.reset(seed=scenario_id)
-            
+        env.unwrapped.real_render()  
+        for i in range(200):
+            obs, reward, terminated, truncated, info = env.step([1, 0])
+            env.unwrapped.real_render()
         feasible_count += 1
         logging.info(f"Scenario {scenario_id} is feasible. Total feasible count: {feasible_count}")
         scenario_id += 1

@@ -15,7 +15,7 @@ def gym_tt_planning_env_fn(config: dict):
     return gym.make("tt-planning-v0", config=config)
 
 def main():
-    config_filename = "configs/agents/training/rl1_obs_attention.yaml"
+    config_filename = "configs/agents/training/rl1_obs_mlp.yaml"
     with open(config_filename, 'r') as file:
         config_algo = yaml.safe_load(file)
     agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,

@@ -26,14 +26,17 @@ whether_astar: true
 astar_ablation: false # true stands for ablation study
 astar_mp_steps: 10
 astar_N_steps: 10
-astar_max_iter: 50
-astar_heuristic_type: 'traditional'
-whether_astar_dataset: true
+astar_max_iter: 10
+astar_heuristic_type: 'mix_original'
+whether_astar_dataset: false # whether use planning datasets
 astar_dataset_dir: 'datasets/data/'
 
 
-whether_dataset: false
+whether_dataset: false # whether use fixed task datasets
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
+whether_fixed_obstacles: true # whether fixed obstacles
+obstacles_info:
+  - [[20, -10], [20, -20], [-20, -20], [-20, -10]]
 use_logger: true
 
 
@@ -43,7 +46,7 @@ pretrained_dir: 'runs_rl/meta-reaching-v0_rl1_lidar_detection_one_hot_three_trai
 
 env_config:
   allow_backward: true
-  max_episode_steps: 40
+  max_episode_steps: 80
   N_steps: 10
   controlled_vehicle_config:
     max_steer: 0.6
@@ -81,10 +84,10 @@ env_config:
       d: 5
   evaluate_mode: false
   generate_goals_config:
-    x_min: -30
-    x_max: 30
-    y_min: -30
-    y_max: 30
+    x_min: -40
+    x_max: 40
+    y_min: -40
+    y_max: -20
   generate_obstacles_config:
     x_min: -30
     x_max: 30
@@ -104,6 +107,6 @@ env_config:
   verbose: false
   use_rgb: false
   use_gray: false
-  with_obstacles_info: false #import for model selection
-  observation: original_with_obstacles_info # ways for perception
+  with_obstacles_info: false #import for model selection (attention)
+  observation: original_with_obstacles_info # ways for perception (obs_mlp)
   
