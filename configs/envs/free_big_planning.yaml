@@ -61,6 +61,6 @@ verbose: false
 use_rgb: false
 use_gray: false
 with_obstacles_info: false #import for model selection
-observation: lidar_detection_one_hot_triple
+observation: original
 
 

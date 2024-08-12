@@ -68,7 +68,7 @@ def calculate_rectangle_corners(params):
 
 def is_rectangle_overlap(corners1, corners2):
     """Check if two rectangles overlap using the Separating Axis Theorem.
-    input: corners1, corners2: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)]
+    input: corners1, corners2: [(x1, y1), (x2, y2), (x3, y3), (x4, y4)] or [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
     output: True if overlap, False if not
     This can be directly use for obstacle and bounding_box detection
     """
@@ -509,6 +509,7 @@ class TractorTrailerMetaPlanningEnv(Env):
         # Note that obstacels_info can be an empty list
         """
         obstacles_info: [[(x1, y1), (x1, y2), (x2, y2), (x2, y1)], [...]]
+        also: [[[x1, y1], [x1, y2], [x2, y2], [x2, y1]], [...]]
         obstacles_info: [] also can be None?
         """
         ox, oy = self.map.sample_surface(0.1)
