@@ -330,47 +330,78 @@ class BC:
         
         return result_array
     
-    def test_agent(self, global_steps):
+    def test_agent(self, global_steps, evaluate_tasks_list=None):
         """the function to test the bc agent"""
         average_ep_ret = 0.0
         average_ep_len = 0.0
         success_rate = 0.0
         jack_knife_rate = 0.0
         crash_rate = 0.0
-        
-        feasible_seed_number = 0
-        finish_episode = 0
-        while finish_episode < self.num_test_episodes:
-            o, info = self.env.reset(seed=feasible_seed_number)
-            while not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config):
-                feasible_seed_number += 1
+        if evaluate_tasks_list is None:
+            feasible_seed_number = 0
+            finish_episode = 0
+            while finish_episode < self.num_test_episodes:
                 o, info = self.env.reset(seed=feasible_seed_number)
-            finish_episode += 1
-            feasible_seed_number += 1
-            terminated, truncated, ep_ret, ep_len = False, False, 0, 0
-            
-            while not(terminated or truncated):
-                # Take deterministic actions at test time
-                obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
-                if not self.observation_type.startswith("original"):
-                    obs_list.append(o[self.observation_type])
-                if self.observation_type == "original_with_obstacles_info":
-                    obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
-                action_input = np.concatenate(obs_list)
-                action = self.get_action(action_input, info, deterministic=True)
-                o, r, terminated, truncated, info = self.env.step(action)
-                ep_ret += r
-                ep_len += 1
-            average_ep_ret += ep_ret
-            average_ep_len += ep_len
-            if info['is_success']:
-                success_rate += 1
-            if info['jack_knife']:
-                jack_knife_rate += 1
-            if info['crashed']:
-                crash_rate += 1
-            if self.use_logger:
-                self.logger.store(ep_rew_mean=ep_ret, ep_len_mean=ep_len)
+                while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
+                    feasible_seed_number += 1
+                    o, info = self.env.reset(seed=feasible_seed_number)
+                finish_episode += 1
+                feasible_seed_number += 1
+                terminated, truncated, ep_ret, ep_len = False, False, 0, 0
+                
+                while not(terminated or truncated):
+                    # Take deterministic actions at test time
+                    obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
+                    if not self.observation_type.startswith("original"):
+                        obs_list.append(o[self.observation_type])
+                    if self.observation_type == "original_with_obstacles_info":
+                        obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
+                    action_input = np.concatenate(obs_list)
+                    action = self.get_action(action_input, info, deterministic=True)
+                    o, r, terminated, truncated, info = self.env.step(action)
+                    ep_ret += r
+                    ep_len += 1
+                average_ep_ret += ep_ret
+                average_ep_len += ep_len
+                if info['is_success']:
+                    success_rate += 1
+                if info['jack_knife']:
+                    jack_knife_rate += 1
+                if info['crashed']:
+                    crash_rate += 1
+                if self.use_logger:
+                    self.logger.store(ep_rew_mean=ep_ret, ep_len_mean=ep_len)
+        else:
+            self.num_test_episodes = len(evaluate_tasks_list)
+            for j in range(len(evaluate_tasks_list)):
+                tasks_list = [evaluate_tasks_list[j]]
+                self.env.update_task_list(tasks_list)
+                o, info = self.env.reset()
+                terminated, truncated, ep_ret, ep_len = False, False, 0, 0
+                
+                while not(terminated or truncated):
+                    # Take deterministic actions at test time
+                    obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
+                    if not self.observation_type.startswith("original"):
+                        obs_list.append(o[self.observation_type])
+                    if self.observation_type == "original_with_obstacles_info":
+                        obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
+                    action_input = np.concatenate(obs_list)
+                    action = self.get_action(action_input, info, deterministic=True)
+                    o, r, terminated, truncated, info = self.env.step(action)
+                    ep_ret += r
+                    ep_len += 1
+                average_ep_ret += ep_ret
+                average_ep_len += ep_len
+                if info['is_success']:
+                    success_rate += 1
+                if info['jack_knife']:
+                    jack_knife_rate += 1
+                if info['crashed']:
+                    crash_rate += 1
+                if self.use_logger:
+                    self.logger.store(ep_rew_mean=ep_ret, ep_len_mean=ep_len)
+                
         jack_knife_rate /= self.num_test_episodes
         success_rate /= self.num_test_episodes  
         crash_rate /= self.num_test_episodes 
@@ -442,6 +473,26 @@ class BC:
         del all_processed_results       
         return datasets, file_read_complete_list, file_read_index_list
     
+    def load_test_datasets(self, file_path):
+        with open(file_path, "rb") as f:
+            results = pickle.load(f)
+        goal_reached_cases = 0
+        planning_results = results["results"]
+        tasks = results["tasks"]
+        evaluate_tasks_list = []
+        for j in range(len(tasks)):
+            goal_reached = planning_results[j].get("goal_reached")
+            if goal_reached:
+                goal_reached_cases += 1
+                task_dict = {
+                    "goal": tasks[j][1],
+                    "obstacles_info": tasks[j][2],
+                }
+                evaluate_tasks_list.append(task_dict)
+            if goal_reached_cases >= 100:
+                break
+        return evaluate_tasks_list
+    
     def get_file_info(self):
         """Initialize the file information
         - file_dir_list: the directory of the file
@@ -468,10 +519,11 @@ class BC:
     
                 
     def run(self):
+        evaluate_tasks_list = self.load_test_datasets("datasets/data/astar_result_obstacle_10_pickle/astar_result_lidar_detection_one_hot_triple_0.pkl")
         # Add read the astar trajectory datasets
         file_dir_list, file_pkl_number_list, file_read_complete_list, file_read_index_list = self.get_file_info()
         
-        epochs = max(file_pkl_number_list)
+        epochs = 1
         current_step = 0
         for epoch in range(epochs):
             print("Prepare Datasets")
@@ -492,7 +544,7 @@ class BC:
                 if current_step % self.save_freq == 0:
                     # Test agent at the end of each epoch
                     print("Start testing")
-                    self.test_agent(current_step)
+                    self.test_agent(current_step, evaluate_tasks_list)
                     print("Finish testing")
                     if not os.path.exists(self.save_model_path):
                         os.makedirs(self.save_model_path)

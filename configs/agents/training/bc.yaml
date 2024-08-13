@@ -1,7 +1,7 @@
 algo_name: 'bc_transformer'
 seed: 10
 env_name: 'planning-v0' # remember to switch script
-steps_per_epoch: 500
+steps_per_epoch: 5000
 lr: 0.001
 batch_size: 1024
 save_freq: 100 # the same as sac_steps_per_epoch
@@ -22,7 +22,7 @@ astar_heuristic_type: 'mix_original'
 whether_astar_dataset: true
 astar_dataset_dir: 'datasets/data/'
 fixed_number: false
-pooling_type: 'max'
+pooling_type: 'average'
 nn_version: '2'
 policy_head: 'gmm'
 whether_dataset: false
