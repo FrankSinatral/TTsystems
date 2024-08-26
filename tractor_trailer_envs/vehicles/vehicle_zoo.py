@@ -1257,6 +1257,8 @@ class ThreeTrailer(Vehicle):
             v = self.velocity_scale(v)
             if not backward:
                 v = abs(v)
+            # if v < 0 and np.abs(steer) < 1:
+            #     steer = 0
             steer = self.steer_scale(steer)
             
             

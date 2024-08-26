@@ -216,6 +216,44 @@ class SquashedGaussianMLPActor(nn.Module):
         with torch.no_grad():
             a, _ = self.forward(obs, obstacles, deterministic=deterministic)
         return a.cpu().numpy()
+    
+class SquashedMLPActor(nn.Module):
+
+    def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit, policy_head="gaussian"):
+        super().__init__()
+        self.net = mlp([obs_dim] + list(hidden_sizes), activation, activation)
+        if policy_head == "gaussian":
+            self.policy_head = GaussianPolicyHead(hidden_sizes[-1], act_dim, act_limit)
+        else:
+            self.policy_head = GMMPolicyHead(hidden_sizes[-1], act_dim, act_limit, num_components=5)
+        self.act_limit = act_limit
+
+    def forward(self, obs, actions=None, deterministic=False, with_logprob=True):
+        
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            if actions is not None:
+                actions = actions.unsqueeze(0)
+        else:
+            squeeze = False
+        net_out = self.net(obs)
+        pi_action, logp_pi = self.policy_head(net_out, deterministic, with_logprob, actions)
+        if squeeze:
+            pi_action = pi_action.squeeze()
+            if logp_pi is not None:
+                logp_pi = logp_pi.squeeze()
+        return pi_action, logp_pi
+
+    def compute_bc_loss(self, obs, actions):
+        _, logp_pi = self.forward(obs, actions=actions)
+        bc_loss = -logp_pi.mean()
+        return bc_loss
+    
+    def act(self, obs, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.forward(obs, deterministic=deterministic)
+        return a.cpu().numpy()
 
 class SquashedTransformerActor(nn.Module):
     def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, n_head=8, num_layers=2, policy_head="gaussian"):
@@ -349,6 +387,126 @@ class SquashedAttentionActor(nn.Module):
         combined_out = torch.cat((goal_reaching_out, pooling_output), dim=-1) 
 
         pi_action, logp_pi = self.policy_head(combined_out, deterministic, with_logprob, actions)
+        
+        if squeeze:
+            pi_action = pi_action.squeeze()
+            if logp_pi is not None:
+                logp_pi = logp_pi.squeeze()
+        
+        return pi_action, logp_pi
+
+    def compute_bc_loss(self, obs, obstacles, actions):
+        _, logp_pi = self.forward(obs, obstacles, actions)
+        bc_loss = -logp_pi.mean()
+        return bc_loss
+    
+    def average_pooling(self, output, mask):
+        """
+        Fullfill average pooling for the output of transformer encoder
+        output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
+        """
+        mask = mask.squeeze(1)  # (batch_size, obstacles_num)
+        mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
+        output_mask = output * mask_expanded  # (batch_size, obstacles_num, latent_dim)
+        valid_counts = mask.sum(dim=1, keepdim=True).float()  # (batch_size, 1)
+        output_sum = output_mask.sum(dim=1)  # (batch_size, latent_dim)
+        
+        output_avg = torch.zeros_like(output_sum)  # (batch_size, latent_dim)
+        non_zero_mask = valid_counts.squeeze() != 0
+        output_avg[non_zero_mask] = output_sum[non_zero_mask] / valid_counts[non_zero_mask]
+        # output_avg = output_sum / valid_counts  # (batch_size, latent_dim)
+        # output_avg[valid_counts.squeeze() == 0] = 0
+        return output_avg
+    
+    def max_pooling(self, output, mask):
+        """
+        Fulfill max pooling for the output of transformer encoder
+        output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
+        """
+        mask = mask.squeeze(1)  # (batch_size, obstacles_num)
+        
+        # Expand the mask to match the dimensions of the output
+        mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
+        
+        # Set the output to zero where the mask is invalid
+        output_masked = output * mask_expanded  # This will zero out the positions where mask is 0
+        
+        # Apply max pooling along the obstacles_num dimension
+        output_max = output_masked.max(dim=1)[0]  # (batch_size, latent_dim)
+        
+        return output_max
+    
+    def sum_pooling(self, output, mask):
+        """
+        Fullfill sum pooling for the output of transformer encoder
+        output: (batch_size, obstacles_num, latent_dim), mask: (batch_size, 1, obstacles_num)
+        """
+        mask = mask.squeeze()  # (batch_size, obstacles_num)
+        mask_expanded = mask.unsqueeze(-1).expand_as(output)  # (batch_size, obstacles_num, latent_dim)
+        output_mask = output * mask_expanded  # (batch_size, obstacles_num, latent_dim)
+        output_sum = output_mask.sum(dim=1)  # (batch_size, latent_dim)
+        return output_sum
+    
+    def act(self, obs, obstacles, deterministic=False):
+        with torch.no_grad():
+            a, _ = self.forward(obs, obstacles, deterministic=deterministic)
+        return a.cpu().numpy()
+    
+class SquashedNewAttentionActor(nn.Module):
+    def __init__(self, state_dim, goal_dim, obstacle_dim, obstacle_num, act_dim, hidden_sizes, activation, act_limit, pooling_type="average", policy_head="gaussian"):
+        super().__init__()
+        self.state_dim = state_dim
+        self.goal_dim = goal_dim
+        self.obstacle_dim = obstacle_dim
+        self.obstacle_num = obstacle_num
+        self.latent_dim = hidden_sizes[-1]
+        self.state_goal_embedding = mlp([state_dim + 2 * goal_dim] + list(hidden_sizes), activation, activation)
+        self.obstacles_embedding = mlp([self.obstacle_dim] + list(hidden_sizes), activation, activation)
+        self.q_proj = nn.Linear(self.latent_dim, self.latent_dim)
+        self.k_proj = nn.Linear(self.latent_dim, self.latent_dim)
+        self.v_proj = nn.Linear(self.latent_dim, self.latent_dim)
+        if policy_head == "gaussian":
+            self.policy_head = GaussianPolicyHead(self.latent_dim, act_dim, act_limit)
+        else:
+            self.policy_head = GMMPolicyHead(self.latent_dim, act_dim, act_limit, num_components=5)
+        self.act_limit = act_limit
+
+    def forward(self, obs, obstacles, actions=None, deterministic=False, with_logprob=True):
+        """
+        obs: (batch_size, state_dim + 2 * goal_dim) or (state_dim + 2 * goal_dim)
+        obstacles: (batch_size, obstacle_dim + 1, obstacles_num) or (obstacle_dim + 1, obstacles_num)
+        """
+        if len(obs.shape) == 1:
+            squeeze = True
+            obs = obs.unsqueeze(0)
+            obstacles = obstacles.unsqueeze(0)
+            if actions is not None:
+                actions = actions.unsqueeze(0)
+        else:
+            squeeze = False
+        device = obs.device
+        state_goal_embedding = self.state_goal_embedding(obs).unsqueeze(1) #(batch_size, 1, latent_dim)
+
+        obstacles_data = obstacles[:, :self.obstacle_dim, :] # (batch_size, obstacle_dim, obstacles_num)
+        obstacles_embedding = self.obstacles_embedding(obstacles_data.permute(0, 2, 1)) # (batch_size, obstacles_num, latent_dim)
+        combined_obs = torch.cat((state_goal_embedding, obstacles_embedding), dim=1)# (batch_size, 1+ obstacles_num, latent_dim)
+
+        query = self.q_proj(combined_obs)  # (batch_size, 1 + obstacles_num, latent_dim)
+        key = self.k_proj(combined_obs) # (batch_size, 1 + obstacles_num, latent_dim)
+        value = self.v_proj(combined_obs) 
+
+        mask = obstacles[:, -1, :].unsqueeze(1)  # (batch_size, 1, obstacles_num)
+        new_mask = torch.ones(mask.size(0), 1, 1).to(device) # （batch_size, 1, 1)
+        augmented_mask = torch.cat([mask, new_mask], dim=-1) # (batch_size, 1, 1+obstacles_num)
+        dk = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1)) 
+        scores = scores / torch.sqrt(torch.tensor(dk, dtype=torch.float32)) # (batch_size, 1 + obstacles_num, 1 + obstacles_num)
+
+        scores = scores.masked_fill(augmented_mask == 0, -1e9)
+        attn_weights = F.softmax(scores, dim=-1)
+        attn_output = torch.matmul(attn_weights, value)[:, 0, :] # (batch_size, latent_dim)
+
+        pi_action, logp_pi = self.policy_head(attn_output, deterministic, with_logprob, actions)
         
         if squeeze:
             pi_action = pi_action.squeeze()

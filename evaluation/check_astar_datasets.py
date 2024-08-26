@@ -38,7 +38,7 @@ def convert_tuple_to_dict(task_list):
 
 def main():
     # file to check
-    dataset_filename = "datasets/data/astar_result_obstacle_10_pickle/astar_result_lidar_detection_one_hot_triple_113.pkl"
+    dataset_filename = "datasets/data/test_success_on_fixed_tasks/astar_result_lidar_detection_one_hot_triple_7.pkl"
     
     with open(dataset_filename, "rb") as f:
         results = pickle.load(f)
@@ -57,26 +57,26 @@ def main():
         use_task_list = [converted_task_list[j]]
         env.unwrapped.update_task_list(use_task_list)
         obs, info = env.reset()
-        env.unwrapped.real_render()
+        # env.unwrapped.real_render()
         
         astar_result = astar_result_list[j]
         if astar_result.get("goal_reached", False):
             print("Goal reached")
             # state_list = astar_result["state_list"]
-            control_list = astar_result["control_list"]
-            # plot the success and length > 400 case
-            if len(control_list) > 400:
-                count += 1 
-                print("len of control list:", len(control_list))
-                for i in range(0, len(control_list), 10):
-                    control = control_list[i]
-                    obs, reward, done, truncted, info = env.step(control)
-                    env.unwrapped.real_render()
+            # control_list = astar_result["control_list"]
+            # # plot the success and length > 400 case
+            # if len(control_list) > 10:
+            #     count += 1 
+            #     print("len of control list:", len(control_list))
+            #     for i in range(0, len(control_list), 10):
+            #         control = control_list[i]
+            #         obs, reward, done, truncted, info = env.step(control)
+            #         env.unwrapped.real_render()
         else:
-            env.unwrapped.real_render()
+            # env.unwrapped.real_render()
             print("Goal not reached")
             count_failed += 1
-    print("length > 400:", count)
+    # print("length > 400:", count)
     print("failed counting:", count_failed)
     
     

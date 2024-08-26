@@ -657,6 +657,7 @@ class TractorTrailerMetaPlanningEnv(Env):
             x_coordinates = self.np_random.uniform(self.config["generate_goals_config"]["x_min"], self.config["generate_goals_config"]["x_max"])
             y_coordinates = self.np_random.uniform(self.config["generate_goals_config"]["y_min"], self.config["generate_goals_config"]["y_max"])
             yaw_state = self.np_random.uniform(-self.yawmax, self.yawmax)
+            # yaw_state = self.np_random.choice([0, np.pi/2, -np.pi/2, np.pi])
             current_goal = np.array([x_coordinates, y_coordinates, yaw_state, yaw_state, yaw_state, yaw_state], dtype=np.float32)
             bounding_box_list = self.controlled_vehicle.get_bounding_box_list(current_goal)
             if obstacles_info is None:
@@ -886,6 +887,40 @@ class TractorTrailerMetaPlanningEnv(Env):
         back_right_place = lidar_detection_one_hot_second[-5]
         if np.isclose(back_left_place, 1.0) or np.isclose(back_right_place , 1.0):
             return False
+        return True
+    
+    def check_goal_with_lidar_detection_one_hot_modified(self):
+        """Check if the goal is too close to obstacles using lidar detection.
+        If any value in the lidar detection one-hot array is 1.0, return False.
+        Otherwise, return True.
+        """
+        controlled_vehicle = deepcopy(self.controlled_vehicle)
+        controlled_vehicle.reset_equilibrium(self.goal[0], self.goal[1], self.goal[2])
+        
+        # Perform lidar detection
+        lidar_detection_one_hot = controlled_vehicle.lidar_detection_one_hot(5, self.ox, self.oy)
+        
+        # Check if any value in the lidar detection one-hot array is 1.0
+        if np.any(np.isclose(lidar_detection_one_hot, 1.0)):
+            return False
+        
+        return True
+    
+    def check_start_with_lidar_detection_one_hot_modifed(self):
+        """Check if the start is too close to obstacles using lidar detection.
+        If any value in the lidar detection one-hot array is 1.0, return False.
+        Otherwise, return True.
+        """
+        controlled_vehicle = deepcopy(self.controlled_vehicle)
+        controlled_vehicle.reset_equilibrium(self.start[0], self.start[1], self.start[2])
+        
+        # Perform lidar detection
+        lidar_detection_one_hot = controlled_vehicle.lidar_detection_one_hot(3, self.ox, self.oy)
+        
+        # Check if any value in the lidar detection one-hot array is 1.0
+        if np.any(np.isclose(lidar_detection_one_hot, 1.0)):
+            return False
+        
         return True
         
     def sparse_reward(self, state, state_, goal=None):

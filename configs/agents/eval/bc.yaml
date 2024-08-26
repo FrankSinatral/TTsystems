@@ -23,7 +23,7 @@ whether_astar_dataset: true
 astar_dataset_dir: 'datasets/data/'
 fixed_number: false
 pooling_type: 'average'
-nn_version: '2'
+nn_version: '5'
 policy_head: 'gmm'
 whether_dataset: false
 dataset_path: 'datasets/goal_with_obstacles_info_list_hz.pickle'
@@ -86,7 +86,7 @@ env_config:
     number_obstacles: 10
     max_length: 20
     min_length: 1.0
-    fixed_number: true
+    fixed_number: false
   
   reward_type: sparse_reward_mod
   vehicle_type: three_trailer

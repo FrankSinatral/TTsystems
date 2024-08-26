@@ -4393,7 +4393,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "whether_obs": True,
             "safe_d": 0.0,
             "extend_area": 0.0,
-            "collision_check_step": 10,
+            "collision_check_step": 1,
             "goal_yaw_error": np.deg2rad(3.0),
             "cost_configuration":
                 {
@@ -4460,8 +4460,11 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             model_filename = "datasets/models/original_model.pth"
         elif self.heuristic_type == "mix_attention":
             config_filename = "configs/agents/eval/rl1_attention.yaml"
-            model_filename = "datasets/models/original_model.pth"
-        if self.heuristic_type != "traditional":
+            model_filename = "runs_rl/planning-v0_bc_transformer_three_trailer_10_20240813_220052/model_9200.pth"
+        elif self.heuristic_type == "bc_mix_attention":
+            config_filename = "configs/agents/eval/bc.yaml"
+            model_filename = "runs_rl/planning-v0_bc_transformer_three_trailer_10_20240813_220052/model_9200.pth"
+        if self.heuristic_type != "traditional" and not self.heuristic_type.startswith("bc"):
             with open(config_filename, "r") as f:
                 # TODO: each time you need to set the config file align with self.observation_type 
                 config_algo = yaml.safe_load(f)
@@ -4469,6 +4472,14 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 config=config_algo,
                 device='cpu')
             self.agent.load(model_filename, whether_load_buffer=False)
+        elif self.heuristic_type.startswith("bc"):
+            with open(config_filename, "r") as f:
+                # TODO: each time you need to set the config file align with self.observation_type 
+                config_algo = yaml.safe_load(f)
+            self.agent = agents.BC(env_fn=gym_tt_planning_env_fn,
+                config=config_algo,
+                device='cpu')
+            self.agent.load_model(model_filename)
             
     
     
@@ -5124,7 +5135,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         
         # Fank: check whether collision here
         # Always perform collision check, regardless of the acceptance
-        ind = range(0, len(path_x_list), int(self.config["collision_check_step"]/4))
+        ind = range(0, len(path_x_list), self.config["collision_check_step"])
         pathx = [path_x_list[k] for k in ind]
         pathy = [path_y_list[k] for k in ind]
         pathyaw = [path_yaw_list[k] for k in ind]
@@ -5807,8 +5818,8 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         ]
     
         # Update the test_env with this task list
-        self.agent.test_env.unwrapped.update_task_list(task_list)
-        o, info = self.agent.test_env.reset()
+        self.agent.env.unwrapped.update_task_list(task_list)
+        o, info = self.agent.env.reset()
         
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not terminated:
@@ -5822,7 +5833,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal'], o['lidar_detection_one_hot_triple']]), deterministic=True)
             else: # attention
                 a = self.agent.get_action(np.concatenate([o['observation'], o['achieved_goal'], o['desired_goal']]), info, deterministic=True)
-            o, r, terminated, truncated, info = self.agent.test_env.step(a)
+            o, r, terminated, truncated, info = self.agent.env.step(a)
             ep_ret += r
             ep_len += 1
             if ep_len >= max_step:
@@ -5840,7 +5851,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         path_yawt2 = []
         path_yawt3 = []
         
-        for state in self.agent.test_env.unwrapped.state_list:
+        for state in self.agent.env.unwrapped.state_list:
             x_global = state[0]
             y_global = state[1]
             yaw_global = state[2]
@@ -5860,7 +5871,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
         rl_path.yawt1 = path_yawt1
         rl_path.yawt2 = path_yawt2
         rl_path.yawt3 = path_yawt3
-        rl_path.rlcontrollist = action_recover_to_planner(self.agent.test_env.unwrapped.action_list)
+        rl_path.rlcontrollist = action_recover_to_planner(self.agent.env.unwrapped.action_list)
         rl_path.info = {
             "is_success": info["is_success"],
             "crashed": info["crashed"],
@@ -5868,7 +5879,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             "final_node": None,
         }
         
-        ind = range(0, len(rl_path.x), int(self.config["collision_check_step"]/4))
+        ind = range(0, len(rl_path.x), self.config["collision_check_step"])
         
         pathx = [rl_path.x[k] for k in ind]
         pathy = [rl_path.y[k] for k in ind]
@@ -5925,7 +5936,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
             node = self.calc_next_node(nstart, self.calc_index(nstart), steer_set[i], direc_set[i])
             if not node:
                 continue
-            if self.is_index_ok(node, int(self.config["collision_check_step"]/4)):
+            if self.is_index_ok(node, self.config["collision_check_step"]):
                 # not collision mp
                 return True    
         return whether_feasible
@@ -6107,7 +6118,7 @@ class ThreeTractorTrailerHybridAstarPlanner(hyastar.BasicHybridAstarPlanner):
                 if not node:
                     # encounter jack_knife
                     continue
-                if not self.is_index_ok(node, int(self.config["collision_check_step"]/4)):
+                if not self.is_index_ok(node, self.config["collision_check_step"]):
                     # check go outside or collision
                     continue
                 node_ind = self.calc_index(node)

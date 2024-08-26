@@ -70,6 +70,7 @@ def test_forward_simulation_three_trailer(input, goal, ox, oy, control_list, sim
                 "collision": False,
                 "goal_reached": False,
                 "perception_list": perception_list,
+                "acceptance_error": 0.6,
             }
             return result_dict
         if controlled_vehicle.is_collision(ox, oy):
@@ -79,12 +80,13 @@ def test_forward_simulation_three_trailer(input, goal, ox, oy, control_list, sim
                 "collision": True,
                 "goal_reached": False,
                 "perception_list": perception_list,
+                "acceptance_error": 0.6,
             }
             return result_dict
     final_state = np.array(controlled_vehicle.state)
     distance_error = common.mixed_norm(goal, final_state)
     # distance_error = np.linalg.norm(goal - final_state)
-    if distance_error < 0.5:
+    if distance_error < 0.6:
         result_dict = {
             "state_list": state_list,
             "jack_knife": False,
@@ -92,6 +94,7 @@ def test_forward_simulation_three_trailer(input, goal, ox, oy, control_list, sim
             "goal_reached": True,
             "perception_list": perception_list,
             "final_state": final_state,
+            "acceptance_error": 0.6,
         }
         return result_dict
     else:
@@ -101,6 +104,7 @@ def test_forward_simulation_three_trailer(input, goal, ox, oy, control_list, sim
             "collision": False,
             "goal_reached": False,
             "perception_list": perception_list,
+            "acceptance_error": 0.6,
         }
         return result_dict
     

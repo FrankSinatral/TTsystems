@@ -85,7 +85,19 @@ def process_task_unsolved_new(j, task_list, env, planner_config):
         return task_dict 
     else:
         return None 
-    
+def convert_tuple_to_dict(task_list):
+    converted_list = []
+    for task in task_list:
+        task_dict = {
+            "start": task[0],
+            "goal": task[1],
+            "obstacles_info": task[2],
+            "map_vertices": task[3],
+            "obstacles_properties": task[4],
+            "map_properties": task[5]
+        }
+        converted_list.append(task_dict)
+    return converted_list   
 
 def main():
     with open("configs/envs/tt_planning_v0_eval.yaml", 'r') as file:
@@ -99,7 +111,7 @@ def main():
         "mp_step": 10, # Important
         "N_steps": 10, # Important
         "range_steer_set": 20,
-        "max_iter": 50,
+        "max_iter": 20,
         "heuristic_type": "mix_original",
         "save_final_plot": False,
         "controlled_vehicle_config": {
@@ -130,16 +142,34 @@ def main():
     
     with open("datasets/10task_list.pkl", "rb") as f:
         task_list = pickle.load(f)
+    task_dict = {
+        "goal": np.array([0, -30, np.pi/2, np.pi/2, np.pi/2, np.pi/2], dtype=np.float32),
+        "obstacles_info": [[[-20, -20], [20, -20], [20, -10], [-20, -10]]]
+    }
     
-    for j in range(len(task_list)):
-        use_task_list = [task_list[j]]
+    dataset_filename = "datasets/data/test_success_on_fixed_tasks/astar_result_lidar_detection_one_hot_triple_6.pkl"
+    
+    with open(dataset_filename, "rb") as f:
+        results = pickle.load(f)
+    
+    task_list = results["tasks"]
+    astar_result_list = results["results"]
+    converted_task_list = convert_tuple_to_dict(task_list)  
+    failed_case = 0
+    for j in range(len(converted_task_list)):
+        use_task_list = [converted_task_list[j]]
         env.unwrapped.update_task_list(use_task_list)
         obs, info = env.reset()
-        env.unwrapped.real_render()
+        astar_result = astar_result_list[j]
+        
+        if not astar_result.get("goal_reached", False):
+            failed_case += 1
+            env.unwrapped.real_render()
         # goal_check_dict = planner.check_and_adjust_goal(obs["desired_goal"], 5, 5, env.unwrapped.ox, env.unwrapped.oy)
-        result_dict = planner.find_astar_trajectory(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
-        planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
-    # for j in range(10000):
+            if failed_case % 3 == 0:
+                result_dict = planner.find_astar_trajectory(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], planner_config)
+        # planner.visualize_planner_final_result(obs["achieved_goal"], obs["desired_goal"], info["obstacles_info"], info["map_vertices"], result_dict)
+    # for j in range(100):
     #     t1 = time.time()
     #     obs, _ = env.reset(seed=(40 + j))
     #     env.action_space.seed(seed=(40 + j))

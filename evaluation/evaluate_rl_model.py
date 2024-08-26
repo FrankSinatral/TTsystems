@@ -46,8 +46,15 @@ def main():
     # config_filename = "configs/agents/eval/rl0.yaml"
     # modelpath = "datasets/models/original_model.pth"
     
-    config_filename = "configs/agents/eval/rl1_lidar_detection_one_hot_triple.yaml"
-    modelpath = "datasets/models/lidar_detection_one_hot_triple_5.pth"
+    # config_filename = "configs/agents/eval/rl1_lidar_detection_one_hot_triple.yaml"
+    # modelpath = "datasets/models/lidar_detection_one_hot_triple_5.pth"
+    
+    config_filename = "configs/agents/eval/rl1_obs_mlp.yaml"
+    modelpath = "runs_rl/planning-v0_rl1_obs_mlp_three_trailer_10_20240815_232935/model_749999.pth"
+    
+    config_filename = "configs/agents/eval/rl1_obs_mlp.yaml"
+    modelpath = "runs_rl/planning-v0_rl1_obs_mlp_three_trailer_10_20240815_232935/model_3549999.pth"
+    # modelpath = "runs_rl/planning-v0_rl1_obs_mlp_three_trailer_10_20240815_234855/model_799999.pth"
     with open(config_filename, 'r') as file:
         config_algo = yaml.safe_load(file)
     observation_type = config_algo['env_config']['observation']
@@ -55,15 +62,29 @@ def main():
     agent = agents.SAC_ASTAR_META_NEW(env_fn=gym_tt_planning_env_fn,
         config=config_algo)
     agent.load(modelpath, whether_load_buffer=False)
-    with open("configs/envs/tt_planning_v0_eval.yaml", 'r') as file:
-        config = yaml.safe_load(file)
+    config = config_algo["env_config"]
+    # with open("configs/envs/tt_planning_v0_eval.yaml", 'r') as file:
+    #     config = yaml.safe_load(file)
     env = gym.make("tt-planning-v0", config=config)
-    
+    if config_algo.get("whether_fixed_obstacles", False):
+        task_list = [{
+                    "goal": np.array([-3, -30, 0, 0, 0, 0], dtype=np.float32),
+                    # "goal": np.array([3.05, -33.13, -0.82 , -0.82, -0.82, -0.82], dtype=np.float32),
+                    "obstacles_info": config_algo.get("obstacles_info"),
+                }]
+        env.unwrapped.update_task_list(task_list)
+    if config_algo.get("whether_fixed_goal", False):
+        task_list = [
+            {
+                "goal": np.array([-30, 30, np.pi/6, np.pi/6, np.pi/6, np.pi/6], dtype=np.float32)
+            }
+        ]
+        env.unwrapped.update_task_list(task_list)
     failed_cases = []
     failed_number = 0
-    for i in range(1000):
+    for i in range(100):
         o, info = env.reset(seed=i)
-        # env.unwrapped.real_render()
+        env.unwrapped.real_render()
         terminated, truncated, ep_ret, ep_len = False, False, 0, 0
         while not(terminated or truncated):
             obs_list = [o['observation'], o['achieved_goal'], o['desired_goal']]
@@ -77,7 +98,7 @@ def main():
             else:
                 action = agent.get_action(action_input, deterministic=True)
             o, r, terminated, truncated, info = env.step(action)
-            # env.unwrapped.real_render()
+            env.unwrapped.real_render()
             ep_ret += r
             ep_len += 1
         # env.unwrapped.run_simulation()

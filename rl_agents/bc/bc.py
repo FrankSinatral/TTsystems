@@ -168,11 +168,18 @@ class BC:
             self.actor = core.SquashedGaussianMixtureTransformerActorVersion2(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
                                                             act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                             activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type).to(self.device)
-        else:
-            self.actor = core.SquashedTransformerActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+        elif self.nn_version == "4":
+            print("choose MLP with perception data")
+            self.actor = core.SquashedMLPActor(obs_dim=self.state_dim + 2*self.state_dim + 36*3,
                                                             act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
                                                             activation=nn.ReLU, act_limit=self.act_limit, 
                                                             policy_head=self.policy_head).to(self.device)
+        else:
+            print("choose New Attention Architecture")
+            self.actor = core.SquashedNewAttentionActor(state_dim=self.state_dim, goal_dim=self.state_dim, obstacle_dim=4, obstacle_num=10,
+                                                            act_dim=self.act_dim, hidden_sizes=tuple(self.config["hidden_sizes"]),
+                                                            activation=nn.ReLU, act_limit=self.act_limit, pooling_type=self.pooling_type,
+                                                            policy_head=self.policy_head).to(self.device) 
         self.actor_optimizer = Adam(self.actor.parameters(), lr=self.lr)
         
         
@@ -198,7 +205,7 @@ class BC:
             itr = str(self.pretrained_itr) if self.pretrained_itr >= 0 else 'final'
             pretrained_file = self.pretrained_dir + 'model_' + itr + '.pth'
             print("Using pretrained model from {}".format(pretrained_file))
-            self.load_model(pretrained_file, whether_load_buffer=False)
+            self.load_model(pretrained_file)
             
         
         self.planner_config = {
@@ -277,24 +284,35 @@ class BC:
     
     def compute_bc_loss(self, data):
         """compute bc loss and update"""
-        state_goal = data["state_goal"].to(self.device)
-        filled_obstacles = data["filled_obstacles"].to(self.device)
-        action = data["action"].to(self.device)
+        if self.nn_version == "4":
+            state_goal_with_perception = data["state_goal_with_perception"].to(self.device)
+            action = data["action"].to(self.device)
+        else:
+            state_goal = data["state_goal"].to(self.device)
+            filled_obstacles = data["filled_obstacles"].to(self.device)
+            action = data["action"].to(self.device)
         self.actor_optimizer.zero_grad()
-        bc_loss = self.actor.compute_bc_loss(state_goal, filled_obstacles, action)
+        if self.nn_version == "4":
+            bc_loss = self.actor.compute_bc_loss(state_goal_with_perception, action)
+        else:
+            bc_loss = self.actor.compute_bc_loss(state_goal, filled_obstacles, action)
         bc_loss.backward()
         self.actor_optimizer.step()
         bc_loss_info = dict(BC_loss=bc_loss.cpu().detach().numpy())
         return bc_loss, bc_loss_info
 
     
-    def get_action(self, o, info, deterministic=False):
-        obstacles_list = info["obstacles_properties"]
-        filled_obstacles = self.process_obstacles_list(obstacles_list)
-        
-        return self.actor.act(torch.as_tensor(o, dtype=torch.float32).to(self.device),
-                               torch.as_tensor(filled_obstacles, dtype=torch.float32).to(self.device),
-                               deterministic=deterministic)
+    def get_action(self, o, info=None, deterministic=False):
+        if info is None:
+            return self.actor.act(torch.as_tensor(o, dtype=torch.float32).to(self.device), 
+                        deterministic=deterministic)
+        else:
+            obstacles_list = info["obstacles_properties"]
+            filled_obstacles = self.process_obstacles_list(obstacles_list)
+            
+            return self.actor.act(torch.as_tensor(o, dtype=torch.float32).to(self.device),
+                                torch.as_tensor(filled_obstacles, dtype=torch.float32).to(self.device),
+                                deterministic=deterministic)
                 
     def process_obstacles_list(self, obstacles_list):
         """This is a function that process the previous obstacles_properties_list to a filled obstacles array
@@ -357,7 +375,10 @@ class BC:
                     if self.observation_type == "original_with_obstacles_info":
                         obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
                     action_input = np.concatenate(obs_list)
-                    action = self.get_action(action_input, info, deterministic=True)
+                    if self.nn_version == "4":
+                        action = self.get_action(action_input, deterministic=True)
+                    else:
+                        action = self.get_action(action_input, info, deterministic=True)
                     o, r, terminated, truncated, info = self.env.step(action)
                     ep_ret += r
                     ep_len += 1
@@ -387,7 +408,10 @@ class BC:
                     if self.observation_type == "original_with_obstacles_info":
                         obs_list.append(self.process_obstacles_properties_to_array(info['obstacles_properties']))
                     action_input = np.concatenate(obs_list)
-                    action = self.get_action(action_input, info, deterministic=True)
+                    if self.nn_version == "4":
+                        action = self.get_action(action_input, deterministic=True)
+                    else:
+                        action = self.get_action(action_input, info, deterministic=True)
                     o, r, terminated, truncated, info = self.env.step(action)
                     ep_ret += r
                     ep_len += 1
@@ -450,6 +474,30 @@ class BC:
 
         return processed_data
     
+    def process_datasets_perception(self, results):
+        encounter_task_list = results["tasks"]
+        astar_results = results["results"]
+        processed_data = []
+
+        for j in range(len(encounter_task_list)):
+            goal_reached = astar_results[j].get("goal_reached")
+            if goal_reached:
+                obstacles_properties_list = encounter_task_list[j][4]
+                
+                goal = encounter_task_list[j][1]
+                astar_state_list = astar_results[j]["state_list"]
+                astar_action_list = astar_results[j]["control_list"]
+                astar_perception_list = astar_results[j]["perception_list"]
+                for i in range(0, len(astar_action_list), 10):
+                    state_goal_with_perception = np.concatenate((astar_state_list[i], astar_state_list[i], goal, astar_perception_list[i]))
+                    action = astar_action_list[i]
+                    processed_data.append({
+                        "state_goal_with_perception": state_goal_with_perception,
+                        "action": action,
+                    })
+
+        return processed_data
+    
     def load_datasets(self, file_dir_list, file_pkl_number_list, file_read_complete_list, file_read_index_list):
         all_processed_results = []        
         if not all(file_read_complete_list):
@@ -460,7 +508,10 @@ class BC:
                 if not file_read_complete_list[j]:
                     with open(file_name, 'rb') as f:
                         results = pickle.load(f)
-                    process_results = self.process_datasets(results)
+                    if self.nn_version == "4":
+                        process_results = self.process_datasets_perception(results)
+                    else:
+                        process_results = self.process_datasets(results)
                     all_processed_results.extend(process_results)
                     file_read_index_list[j] += 1
                     if file_read_index_list[j] >= file_pkl_number_list[j]:
@@ -472,6 +523,27 @@ class BC:
             datasets.append(tensor_sample)
         del all_processed_results       
         return datasets, file_read_complete_list, file_read_index_list
+
+    def load_training_datasets(self, file_dir_list, read_number=10):
+        all_processed_results = []        
+        for j in range(len(file_dir_list)):
+            file_dir = file_dir_list[j]
+            for file_read_index in range(read_number):
+                file_name = os.path.join(file_dir, "astar_result_lidar_detection_one_hot_triple_" + str(file_read_index) + ".pkl")
+                with open(file_name, 'rb') as f:
+                    results = pickle.load(f)
+                if self.nn_version == "4":
+                    process_results = self.process_datasets_perception(results)
+                else:
+                    process_results = self.process_datasets(results)
+                all_processed_results.extend(process_results)
+        # convert to tensor
+        datasets = []
+        for sample in all_processed_results:
+            tensor_sample = {key: torch.tensor(value) for key, value in sample.items()}
+            datasets.append(tensor_sample)
+        del all_processed_results       
+        return datasets
     
     def load_test_datasets(self, file_path):
         with open(file_path, "rb") as f:
@@ -480,6 +552,7 @@ class BC:
         planning_results = results["results"]
         tasks = results["tasks"]
         evaluate_tasks_list = []
+        real_planning_list = []
         for j in range(len(tasks)):
             goal_reached = planning_results[j].get("goal_reached")
             if goal_reached:
@@ -489,9 +562,10 @@ class BC:
                     "obstacles_info": tasks[j][2],
                 }
                 evaluate_tasks_list.append(task_dict)
+                real_planning_list.append(planning_results[j])
             if goal_reached_cases >= 100:
                 break
-        return evaluate_tasks_list
+        return evaluate_tasks_list, real_planning_list
     
     def get_file_info(self):
         """Initialize the file information
@@ -519,7 +593,7 @@ class BC:
     
                 
     def run(self):
-        evaluate_tasks_list = self.load_test_datasets("datasets/data/astar_result_obstacle_10_pickle/astar_result_lidar_detection_one_hot_triple_0.pkl")
+        evaluate_tasks_list, _ = self.load_test_datasets("datasets/data/astar_result_obstacle_10_pickle/astar_result_lidar_detection_one_hot_triple_0.pkl")
         # Add read the astar trajectory datasets
         file_dir_list, file_pkl_number_list, file_read_complete_list, file_read_index_list = self.get_file_info()
         
@@ -527,7 +601,8 @@ class BC:
         current_step = 0
         for epoch in range(epochs):
             print("Prepare Datasets")
-            datas, file_read_complete_list, file_read_index_list = self.load_datasets(file_dir_list, file_pkl_number_list, file_read_complete_list, file_read_index_list)
+            # datas, file_read_complete_list, file_read_index_list = self.load_datasets(file_dir_list, file_pkl_number_list, file_read_complete_list, file_read_index_list)
+            datas = self.load_training_datasets(file_dir_list)
             datasets = AstarPlanningDataset(datas)
             dataloader = torch.utils.data.DataLoader(datasets, batch_size=self.batch_size, shuffle=True)
             print("Finish Prepare Datasets")

@@ -179,6 +179,7 @@ class SAC_ASTAR_META_NEW:
     
         self.whether_dataset = self.config.get("whether_dataset", False)
         self.whether_fixed_obstacles = self.config.get("whether_fixed_obstacles", False) # whether fix our obstacles
+        self.whether_fixed_goal = self.config.get("whether_fixed_goal", False)
         self.dataset_path = self.config.get("dataset_path", 'datasets/goal_with_obstacles_info_list.pickle')
         self.env_config = self.config.get("env_config", None)
         self.whether_fix_number = self.env_config["generate_obstacles_config"].get("fixed_number", False) # fix a typo
@@ -238,6 +239,14 @@ class SAC_ASTAR_META_NEW:
             task_list = [{
                 "obstacles_info": self.config.get("obstacles_info"),
             }]
+            self.env.unwrapped.update_task_list(task_list)
+            self.test_env.unwrapped.update_task_list(task_list)
+        if self.whether_fixed_goal:
+            task_list = [
+                {
+                    "goal": np.array([-30, 30, np.pi/6, np.pi/6, np.pi/6, np.pi/6], dtype=np.float32)
+                }
+            ]
             self.env.unwrapped.update_task_list(task_list)
             self.test_env.unwrapped.update_task_list(task_list)
         self.observation_type = self.env.unwrapped.observation_type

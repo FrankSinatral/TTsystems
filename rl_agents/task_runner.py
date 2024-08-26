@@ -21,9 +21,9 @@ class TaskRunner:
         np.random.seed(self.seed)
         self.env_config = self.config.get("env_config", {})
         self.env = env_fn(self.env_config)
-        with open("datasets/fixed_obstacles_info.pickle", 'rb') as file:
-            self.task_list = pickle.load(file)
-            self.env.unwrapped.update_task_list(self.task_list)
+        # with open("datasets/fixed_obstacles_info.pickle", 'rb') as file:
+        #     self.task_list = pickle.load(file)
+        #     self.env.unwrapped.update_task_list(self.task_list)
         self.astar_mp_steps = self.config.get("astar_mp_steps", 10)
         self.astar_N_steps = self.config.get("astar_N_steps", 10)
         self.astar_max_iter = self.config.get("astar_max_iter", 5)
@@ -32,6 +32,7 @@ class TaskRunner:
         self.astar_total_batch = self.config.get("astar_total_batch", 100)
         self.save_model_path = self.config.get("save_model_path", "datasets/data")
         self.observation_type = self.config.get("observation_type", "lidar_detection_one_hot_triple")
+        self.whether_test_fixed_datasets = self.config.get("whether_test_fixed_datasets", False)
         self.finish_episode_number = 0
         self.encounter_task_list = []
         self.feasible_seed_number = 0
@@ -107,28 +108,41 @@ class TaskRunner:
         }
         
     def run(self):
-        self.finish_episode_number = 0
-        self.feasible_seed_number = 0
-        self.encounter_task_list = []
-        while self.finish_episode_number // self.astar_batch_size < self.astar_total_batch:
-            self.feasible_seed_number += 1
-            o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
-            while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
+        if not self.whether_test_fixed_datasets:
+            self.finish_episode_number = 0
+            self.feasible_seed_number = 0
+            self.encounter_task_list = []
+            while self.finish_episode_number // self.astar_batch_size < self.astar_total_batch:
                 self.feasible_seed_number += 1
                 o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
-            self.encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
-            self.finish_episode_number += 1
-            if len(self.encounter_task_list) >= self.astar_batch_size:
-                print("Start Collecting Buffer from Astar")
-                start_time = time.time()
-                # with Pool(20) as p:
-                #     astar_results = p.map(multi_run_wrapper, list((task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list))
-                astar_results = Parallel(n_jobs=128)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list)
-                # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list]
-                self.save_results(astar_results)
-                end_time = time.time()
-                print("Astar collecting time:", end_time - start_time)
-    
+                while (not planner.check_is_start_feasible(o["achieved_goal"], info["obstacles_info"], info["map_vertices"], self.check_planner_config)) or (not self.env.unwrapped.check_goal_with_using_lidar_detection_one_hot()):
+                    self.feasible_seed_number += 1
+                    o, info = self.env.reset(seed=self.seed + self.feasible_seed_number)
+                self.encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
+                self.finish_episode_number += 1
+                if len(self.encounter_task_list) >= self.astar_batch_size:
+                    print("Start Collecting Buffer from Astar")
+                    start_time = time.time()
+                    # with Pool(20) as p:
+                    #     astar_results = p.map(multi_run_wrapper, list((task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list))
+                    astar_results = Parallel(n_jobs=128)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list)
+                    # astar_results = [planner.find_astar_trajectory(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list]
+                    self.save_results(astar_results)
+                    end_time = time.time()
+                    print("Astar collecting time:", end_time - start_time)
+        else:
+            with open("datasets/10task_list_evaluation_5000.pkl", "rb") as f:
+                task_list = pickle.load(f)
+            self.encounter_task_list = []
+            for j in range(len(task_list)):
+                now_task_list = [task_list[j]]
+                self.env.unwrapped.update_task_list(now_task_list)
+                o, info = self.env.reset()
+                self.encounter_task_list.append((o["achieved_goal"], o["desired_goal"], info["obstacles_info"], info["map_vertices"], info["obstacles_properties"], info["map_properties"]))
+            print("Start Evaluation")
+            astar_results = Parallel(n_jobs=128)(delayed(planner.find_astar_trajectory)(task[0], task[1], task[2], task[3], self.planner_config, self.observation_type) for task in self.encounter_task_list)
+            self.save_results(astar_results)  
+            print("End Evaluation and saved")
     
     def save_results(self, astar_results):
         if not os.path.exists(self.save_model_path):

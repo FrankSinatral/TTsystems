@@ -1,5 +1,5 @@
 allow_backward: true
-max_episode_steps: 80
+max_episode_steps: 60
 N_steps: 10
 controlled_vehicle_config:
   max_steer: 0.6
@@ -55,12 +55,12 @@ reward_type: sparse_reward_mod
 vehicle_type: three_trailer
 jack_knife_penalty: -20
 collision_penalty: -20
-sparse_reward_threshold: 0.8
+sparse_reward_threshold: 0.5
 sucess_goal_reward_sparse: 15
 verbose: false
 use_rgb: false
 use_gray: false
-with_obstacles_info: false
-observation: original
+with_obstacles_info: false # useless for checking datasets quaility
+observation: original # useless for checking datasets quaility
 
 
