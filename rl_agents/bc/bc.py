@@ -396,7 +396,7 @@ class BC:
             self.num_test_episodes = len(evaluate_tasks_list)
             for j in range(len(evaluate_tasks_list)):
                 tasks_list = [evaluate_tasks_list[j]]
-                self.env.update_task_list(tasks_list)
+                self.env.unwrapped.update_task_list(tasks_list)
                 o, info = self.env.reset()
                 terminated, truncated, ep_ret, ep_len = False, False, 0, 0
                 
